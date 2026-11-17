@@ -6,9 +6,9 @@ from collections.abc import Iterable
 from typing import Any, Protocol
 
 from cryptography.fernet import Fernet, InvalidToken
-from psycopg_pool import AsyncConnectionPool
 
 from agent0.core.types import utcnow
+from agent0.db.pool import PgPool
 from agent0.models.base import ModelProfile
 
 log = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ class InMemorySecretStore(_BaseSecretStore):
 
 
 class PgSecretStore(_BaseSecretStore):
-    def __init__(self, pool: AsyncConnectionPool, master_key: str | None) -> None:
+    def __init__(self, pool: PgPool, master_key: str | None) -> None:
         super().__init__(master_key)
         self.pool = pool
 

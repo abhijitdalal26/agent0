@@ -6,9 +6,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from psycopg.types.json import Jsonb
-from psycopg_pool import AsyncConnectionPool
 
 from agent0.db.fts import or_tsquery
+from agent0.db.pool import PgPool
 from agent0.knowledge.base import SourceRecord
 from agent0.memory.fusion import rank_by_keywords
 
@@ -96,7 +96,7 @@ class DocsKnowledgeSource:
     def __init__(
         self,
         name: str,
-        pool: AsyncConnectionPool,
+        pool: PgPool,
         root: Path | None = None,
         patterns: Sequence[str] = DEFAULT_PATTERNS,
         max_chars: int = 1200,

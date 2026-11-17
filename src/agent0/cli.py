@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+from collections.abc import Coroutine
+from typing import Any
 
 import typer
 from rich.console import Console
 
 app = typer.Typer(no_args_is_help=True, help="agent0: a multi-model agent harness that verifies its work.")
 console = Console()
+
+
+def _run_async(coro: Coroutine[Any, Any, None]) -> None:
+    # psycopg async needs a selector loop; Windows defaults to Proactor.
+    if sys.platform == "win32":
+        asyncio.run(coro, loop_factory=asyncio.SelectorEventLoop)
+    else:
+        asyncio.run(coro)
 
 
 @app.callback()
@@ -36,10 +47,10 @@ def run(
     import json
 
     spec = json.loads(open(task_file, encoding="utf-8").read()) if task_file else {}
-    prompt = prompt or spec.get("prompt")
+    prompt = prompt or spec.get("prompt") or ""
     if not prompt:
         raise typer.BadParameter("give a prompt or --task-file")
-    asyncio.run(_run(prompt, spec.get("agent", agent), retries, max_usd, sandbox, spec))
+    _run_async(_run(prompt, spec.get("agent", agent), retries, max_usd, sandbox, spec))
 
 
 async def _run(
@@ -132,7 +143,7 @@ def worker() -> None:
     """Temporal worker that executes durable runs (use with AGENT0_ORCHESTRATOR=temporal)."""
     from agent0.serve import worker as run
 
-    asyncio.run(run())
+    _run_async(run())
 
 
 @app.command("db-init")
@@ -148,7 +159,7 @@ def db_init() -> None:
         finally:
             await close_pool(pool)
 
-    asyncio.run(go())
+    _run_async(go())
     console.print("schema applied")
 
 
@@ -169,7 +180,7 @@ def ingest(source: str) -> None:
         finally:
             await close_pool(pool)
 
-    asyncio.run(go())
+    _run_async(go())
 
 
 @app.command("secrets-keygen")

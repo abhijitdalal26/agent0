@@ -57,9 +57,11 @@ class LocalSandbox:
 
     @staticmethod
     def _kill(proc: asyncio.subprocess.Process, posix: bool) -> None:
+        # killpg/SIGKILL are POSIX-only per typeshed; getattr keeps pyright quiet.
+        killpg = getattr(os, "killpg", None)
         with contextlib.suppress(ProcessLookupError):
-            if posix:
-                os.killpg(proc.pid, signal.SIGKILL)
+            if posix and killpg is not None:
+                killpg(proc.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
             else:
                 proc.kill()
 

@@ -62,6 +62,26 @@ async def test_task_runs_end_to_end(runtime):
     assert runtime.usage.records
 
 
+async def test_task_budget_reaches_budget_meter(runtime, monkeypatch):
+    seen = []
+    real = steps_mod.BudgetMeter
+
+    def spy(**kwargs):
+        seen.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(steps_mod, "BudgetMeter", spy)
+    task = Task(
+        title="hello",
+        prompt="Write hello.txt",
+        budget=Budget(max_usd=0.5, max_minutes=12),
+    )
+    _, outcome = await LocalOrchestrator(runtime).run_to_end(task)
+    assert outcome.status == RunStatus.SUCCEEDED, outcome
+    # executor agent.md sets max_steps: 40, which overrides the task value by design
+    assert seen and seen[0]["max_usd"] == 0.5 and seen[0]["max_minutes"] == 12
+
+
 async def test_required_criteria_are_kept_and_enforced(runtime):
     required = {
         "id": "must",

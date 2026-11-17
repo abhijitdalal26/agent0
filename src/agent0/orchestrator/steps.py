@@ -200,7 +200,7 @@ class Engine:
             sandbox=sandbox,
             events=self.rt.events,
             policy=_policy(agent_def, self.rt),
-            budget=BudgetMeter(budget=budget),
+            budget=BudgetMeter(**budget.model_dump()),
             approved=set(approved),
             knowledge=self.rt.knowledge,
             router=self.rt.router,

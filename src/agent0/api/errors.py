@@ -4,7 +4,7 @@ import base64
 import binascii
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -36,7 +36,7 @@ class ApiError(Exception):
 
 
 def error_response(
-    status: int, code: str, message: str, headers: dict[str, str] | None = None
+    status: int, code: str, message: str, headers: Mapping[str, str] | None = None
 ) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status, headers=headers)
 

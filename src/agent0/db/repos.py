@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 
 import psycopg
 from psycopg.types.json import Jsonb
-from psycopg_pool import AsyncConnectionPool
 
 from agent0.core.types import Artifact, Budget, Event, EventType, Run, Task, new_id
+from agent0.db.pool import PgPool
 from agent0.models.base import ModelProfile, UsageRecord
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ def _clean_all(rows: Sequence[Row]) -> list[Row]:
 
 
 class _Repo:
-    def __init__(self, pool: AsyncConnectionPool) -> None:
+    def __init__(self, pool: PgPool) -> None:
         self.pool = pool
 
     async def _one(self, sql: str, params: Sequence[Any] = ()) -> Row | None:
@@ -541,7 +541,7 @@ class FactRepo(_Repo):
 
 
 class Repos:
-    def __init__(self, pool: AsyncConnectionPool) -> None:
+    def __init__(self, pool: PgPool) -> None:
         self.pool = pool
         self.tasks = TaskRepo(pool)
         self.runs = RunRepo(pool)
@@ -558,7 +558,7 @@ class Repos:
 
 
 class PgEventSink:
-    def __init__(self, pool: AsyncConnectionPool) -> None:
+    def __init__(self, pool: PgPool) -> None:
         self.pool = pool
         self.events = EventRepo(pool)
 
@@ -567,7 +567,8 @@ class PgEventSink:
 
     async def subscribe(self, run_id: str | None = None) -> AsyncIterator[Event]:
         """Live events from every process; a dedicated connection holds LISTEN for the generator's life."""
-        conn = await psycopg.AsyncConnection.connect(self.pool.conninfo, autocommit=True)
+        # conninfo is a str here: create_pool always passes settings.database_url.
+        conn = await psycopg.AsyncConnection.connect(self.pool.conninfo, autocommit=True)  # type: ignore[arg-type]
         try:
             await conn.execute(f"LISTEN {EVENTS_CHANNEL}")
             async for notice in conn.notifies():
@@ -586,7 +587,7 @@ class PgEventSink:
 
 
 class PgUsageSink:
-    def __init__(self, pool: AsyncConnectionPool) -> None:
+    def __init__(self, pool: PgPool) -> None:
         self.usage = UsageRepo(pool)
 
     async def record(self, usage: UsageRecord) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+from typing import Any
 
 from pydantic import BaseModel
 from temporalio import activity, workflow
@@ -124,8 +125,12 @@ class Activities:
         ]
 
 
-_SHORT = dict(start_to_close_timeout=timedelta(minutes=2), retry_policy=RetryPolicy(maximum_attempts=3))
-_MODEL = dict(start_to_close_timeout=timedelta(minutes=10), retry_policy=RetryPolicy(maximum_attempts=3))
+_SHORT: dict[str, Any] = dict(
+    start_to_close_timeout=timedelta(minutes=2), retry_policy=RetryPolicy(maximum_attempts=3)
+)
+_MODEL: dict[str, Any] = dict(
+    start_to_close_timeout=timedelta(minutes=10), retry_policy=RetryPolicy(maximum_attempts=3)
+)
 
 
 @workflow.defn(name="RunWorkflow")

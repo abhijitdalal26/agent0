@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from psycopg_pool import AsyncConnectionPool
 
+from agent0.db.pool import PgPool
 from agent0.knowledge.base import KnowledgeSource
 from agent0.knowledge.docs import DocsKnowledgeSource, InMemoryDocsSource
 from agent0.knowledge.sql import SqlKnowledgeSource
@@ -18,7 +18,7 @@ class KnowledgeConfigError(ValueError):
 
 def load_sources(
     path: Path | str = "config/knowledge.yaml",
-    pool: AsyncConnectionPool | None = None,
+    pool: PgPool | None = None,
     env: dict[str, str] | None = None,
 ) -> dict[str, KnowledgeSource]:
     """Build sources from YAML. DSNs come from env vars named in the file, never from the file itself.

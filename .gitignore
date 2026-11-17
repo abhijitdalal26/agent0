@@ -13,3 +13,4 @@ dashboard/.next/
 dashboard/.env*
 .env.*
 !.env.example
+dashboard/tsconfig.tsbuildinfo

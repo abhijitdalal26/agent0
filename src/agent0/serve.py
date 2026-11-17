@@ -108,11 +108,12 @@ async def build_deps() -> ApiDeps:
         log.warning("Telegram disabled: no %s in env or secret store", TELEGRAM_KEY)
 
     async def close() -> None:
-        if poller:
+        if channel is not None:
             await channel.stop()
-            poller.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await poller
+            if poller is not None:
+                poller.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await poller
         await close_pool(pool)
 
     return ApiDeps(

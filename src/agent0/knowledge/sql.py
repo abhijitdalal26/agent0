@@ -118,9 +118,9 @@ class SqlKnowledgeSource:
         async with await psycopg.AsyncConnection.connect(self.dsn, row_factory=dict_row) as conn:  # type: ignore[arg-type]
             await conn.set_read_only(True)
             async with conn.transaction():
-                await conn.execute(f"SET LOCAL statement_timeout = {self.timeout_ms}")
+                await conn.execute(f"SET LOCAL statement_timeout = {self.timeout_ms}")  # type: ignore
                 cur = await conn.execute(sql, params or None)  # type: ignore[arg-type]
-                return await cur.fetchmany(self.max_rows)
+                return await cur.fetchmany(self.max_rows)  # type: ignore[return-value]
 
     async def query(self, sql: str, params: Sequence[Any] = ()) -> list[SourceRecord]:
         validate_select(sql)

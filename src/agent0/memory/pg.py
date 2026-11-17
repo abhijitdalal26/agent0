@@ -3,9 +3,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from psycopg_pool import AsyncConnectionPool
-
 from agent0.db.fts import or_tsquery, vector_literal
+from agent0.db.pool import PgPool
 from agent0.memory.base import Fact, FactVerdict, Recall, RunSummary
 from agent0.memory.fusion import rrf, take_within_budget
 
@@ -18,7 +17,7 @@ _SCOPE = "(scope = 'global' OR (scope = %(scope)s AND scope_id IS NOT DISTINCT F
 class PgMemoryStore:
     def __init__(
         self,
-        pool: AsyncConnectionPool,
+        pool: PgPool,
         embed: EmbedFn | None = None,
         max_chars: int = 2000,
         max_facts: int = 8,

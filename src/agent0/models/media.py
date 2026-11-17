@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from math import gcd
 from typing import Any
 
-from google import genai
+import google.genai as genai
 from google.genai import types as gtypes
 from groq import AsyncGroq
 from pydantic_ai.embeddings.google import GoogleEmbeddingModel
