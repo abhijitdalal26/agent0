@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Annotated, Any, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SkipValidation
 
 from agent0.knowledge.base import SourceRecord
 from agent0.sandbox.base import Sandbox
@@ -26,16 +26,20 @@ class VerdictStatus(StrEnum):
     ERROR = "error"
 
 
+# Plugin check types register by name, so a criterion may carry a type outside the built-in enum.
+CheckTypeName = Annotated[CheckType | str, Field(union_mode="left_to_right")]
+
+
 class Criterion(BaseModel):
     id: str
     description: str
-    type: CheckType
+    type: CheckTypeName
     config: dict[str, Any] = Field(default_factory=dict)
 
 
 class Verdict(BaseModel):
     check_id: str
-    type: CheckType
+    type: CheckTypeName
     status: VerdictStatus
     evidence: str = ""
     score: float | None = None
@@ -56,12 +60,14 @@ class VerifyContext(BaseModel):
     run_id: str
     task_prompt: str
     output: str
-    sandbox: Sandbox | None = None
+    # Sandbox is a non-runtime Protocol, so pydantic cannot isinstance-check it.
+    sandbox: SkipValidation[Sandbox | None] = None
     sources: list[SourceRecord] = Field(default_factory=list)
     executor_provider: str | None = None
 
 
 class Check(Protocol):
-    type: CheckType
+    @property
+    def type(self) -> CheckType | str: ...
 
     async def run(self, criterion: Criterion, ctx: VerifyContext) -> Verdict: ...
