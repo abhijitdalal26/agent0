@@ -25,17 +25,26 @@ def version() -> None:
 
 @app.command()
 def run(
-    prompt: str,
+    prompt: str = typer.Argument(None, help="What to do. Omit when using --task-file."),
+    task_file: str = typer.Option(None, help="JSON with title, prompt, agent and required criteria."),
     agent: str = typer.Option("executor", help="Agent name from agents/ or plugins."),
     retries: int = typer.Option(2, help="Retries after a failed verification."),
     max_usd: float = typer.Option(1.0, help="Spend cap for this task."),
     sandbox: str = typer.Option(None, help="docker | local (default from settings)."),
 ) -> None:
     """Run one task in this process and stream what happens. Approvals are asked in the terminal."""
-    asyncio.run(_run(prompt, agent, retries, max_usd, sandbox))
+    import json
+
+    spec = json.loads(open(task_file, encoding="utf-8").read()) if task_file else {}
+    prompt = prompt or spec.get("prompt")
+    if not prompt:
+        raise typer.BadParameter("give a prompt or --task-file")
+    asyncio.run(_run(prompt, spec.get("agent", agent), retries, max_usd, sandbox, spec))
 
 
-async def _run(prompt: str, agent: str, retries: int, max_usd: float, sandbox: str | None) -> None:
+async def _run(
+    prompt: str, agent: str, retries: int, max_usd: float, sandbox: str | None, spec: dict | None = None
+) -> None:
     from agent0.config import get_settings
     from agent0.core.events import MemoryEventSink
     from agent0.core.types import Budget, Task
@@ -60,8 +69,9 @@ async def _run(prompt: str, agent: str, retries: int, max_usd: float, sandbox: s
     rt.notify_approval = ask
     queue = sink.subscribe()
     task = Task(
-        title=prompt[:80],
+        title=(spec or {}).get("title", prompt[:80]),
         prompt=prompt,
+        criteria=(spec or {}).get("criteria", []),
         agent=agent,
         source="cli",
         budget=Budget(max_retries=retries, max_usd=max_usd),

@@ -1,0 +1,20 @@
+{
+  "title": "Northwind oral program Instagram ads",
+  "prompt": "Write 3 Instagram ad variants for the Northwind Oral Program, launching Monday. Use only facts from the northwind knowledge source and cite them as [src:<id>]. Follow the ad-compliance skill. Save the variants to ads.md (one '## Variant N' section each, primary text under 125 characters) and a square 1080x1080 hero image to hero.png.",
+  "agent": "executor",
+  "criteria": [
+    {"id": "files", "type": "artifact", "description": "ads.md exists with 3 variants",
+     "config": {"path": "ads.md", "required_patterns": ["## Variant 1", "## Variant 2", "## Variant 3"]}},
+    {"id": "banned", "type": "artifact", "description": "no banned claims",
+     "config": {"path": "ads.md", "forbidden_patterns": ["guarantee", "cure", "lose \d+ ?(lbs|pounds)", "FDA[- ]approved", "clinically proven", "no (doctor|exam) (needed|required)", "100% effective"]}},
+    {"id": "disclaimer", "type": "artifact", "description": "required disclaimer present",
+     "config": {"path": "ads.md", "required_patterns": ["(clinicians decide whether treatment is right for you|Rx may apply\. See terms\.)", "Not available in all states|See terms"]}},
+    {"id": "hero", "type": "artifact", "description": "hero image is 1080x1080",
+     "config": {"path": "hero.png", "image": {"width": 1080, "height": 1080}}},
+    {"id": "facts", "type": "grounded", "description": "every product fact is backed by a cited source",
+     "config": {"path": "ads.md"}},
+    {"id": "voice", "type": "llm_judge", "description": "matches Northwind brand voice",
+     "config": {"path": "ads.md", "rubric": ["Warm, plain, short sentences", "No fear, shame or body-image language", "Clear call to action"], "threshold": 4}},
+    {"id": "signoff", "type": "human", "description": "a human approves before launch"}
+  ]
+}

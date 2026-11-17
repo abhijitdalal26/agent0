@@ -86,6 +86,7 @@ class Task(BaseModel):
     notify_level: NotifyLevel = NotifyLevel.MILESTONES
     budget: Budget = Field(default_factory=Budget)
     chat_id: str | None = None
+    criteria: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utcnow)
 
 

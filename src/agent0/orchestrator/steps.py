@@ -23,6 +23,7 @@ from agent0.policy.permissions import ApprovalRequired, Decision, Policy
 from agent0.tools import build_toolset
 from agent0.tools.deps import call_key
 from agent0.verify import (
+    Criterion,
     JudgeModel,
     TaskSpec,
     Verdict,
@@ -135,11 +136,21 @@ class Engine:
         await self._record_chat(
             run_id, profiles[0], result.usage, int((time.monotonic() - started) * 1000), True
         )
-        spec = result.output
+        spec = await self._with_required(task, result.output)
         if self.rt.repos:
             await self.rt.repos.task_specs.upsert(task.id, spec)
         await self.rt.events.emit(run_id, EventType.PLAN_CREATED, spec.model_dump(mode="json"))
         return spec
+
+    async def _with_required(self, task: Task, spec: TaskSpec) -> TaskSpec:
+        required = [Criterion.model_validate(c) for c in task.criteria]
+        if self.rt.repos and (stored := await self.rt.repos.task_specs.get(task.id)):
+            required += stored.criteria
+        if not required:
+            return spec
+        ids = {c.id for c in required}
+        extra = [c for c in spec.criteria if c.id not in ids]
+        return spec.model_copy(update={"criteria": required + extra})
 
     def _tool_names(self) -> list[str]:
         names = ["shell", "read_file", "write_file", "list_files", "web_fetch"]

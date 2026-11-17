@@ -4,7 +4,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from agent0.config import Settings
 from agent0.core.events import MemoryEventSink
-from agent0.core.types import EventType, RunStatus, Task
+from agent0.core.types import Budget, EventType, RunStatus, Task
 from agent0.orchestrator import steps as steps_mod
 from agent0.orchestrator.local import LocalOrchestrator
 from agent0.orchestrator.runtime import build_runtime
@@ -60,3 +60,16 @@ async def test_task_runs_end_to_end(runtime):
     ):
         assert expected in types
     assert runtime.usage.records
+
+
+async def test_required_criteria_are_kept_and_enforced(runtime):
+    required = {
+        "id": "must",
+        "type": "artifact",
+        "description": "hello.txt mentions planets",
+        "config": {"path": "hello.txt", "required_patterns": ["planets"]},
+    }
+    task = Task(title="hello", prompt="Write hello.txt", criteria=[required], budget=Budget(max_retries=0))
+    _, outcome = await LocalOrchestrator(runtime).run_to_end(task)
+    assert outcome.status == RunStatus.FAILED
+    assert {v.check_id for v in outcome.report.verdicts} >= {"must", "c1"}

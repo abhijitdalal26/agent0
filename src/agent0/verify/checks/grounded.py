@@ -89,10 +89,18 @@ class GroundedCheck:
 
     async def prepare(self, criterion: Criterion, ctx: VerifyContext) -> Verdict | JudgeRequest:
         cfg = criterion.config
-        claims = parse_claims(ctx.output)
+        text = ctx.output
+        if path := cfg.get("path"):
+            if ctx.sandbox is None:
+                return verdict(criterion, VerdictStatus.ERROR, "grounded with a path needs a sandbox")
+            try:
+                text = (await ctx.sandbox.read_file(path)).decode("utf-8", errors="replace")
+            except Exception as exc:
+                return verdict(criterion, VerdictStatus.FAIL, f"{path} not found or unreadable: {exc}")
+        claims = parse_claims(text)
         if not claims:
             patterns = cfg.get("abstention_patterns", DEFAULT_ABSTENTION_PATTERNS)
-            if any(re.search(p, ctx.output, re.IGNORECASE) for p in patterns):
+            if any(re.search(p, text, re.IGNORECASE) for p in patterns):
                 if cfg.get("allow_abstention", True):
                     return verdict(
                         criterion, VerdictStatus.PASS, "answer abstains: the data does not contain it"
