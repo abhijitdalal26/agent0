@@ -1,247 +1,276 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Bot,
-  CheckCircle2,
-  Clock,
-  Coins,
-  Cpu,
-  FolderOpen,
-  Play,
-  RotateCcw,
-  Square,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
-import {
-  getRun,
-  getRunCriteriaAndVerdicts,
-  getRunArtifacts,
-  stopRun,
-  retryTask,
-  subscribeToRunStream,
-} from "@/lib/api";
-import type { Run, Criterion, Verdict, Artifact, RunEvent } from "@/types";
-import { formatCurrency, formatTokens, formatRelativeTime } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Cpu, FolderOpen, RotateCcw, ShieldAlert, Square } from "lucide-react";
+import { getRun, getRunArtifacts, getRunCriteriaAndVerdicts, getRunEvents, retryTask, stopRun } from "@/lib/api";
+import { useEventStream } from "@/lib/sse";
+import type { Artifact, Criterion, Run, RunEvent, Task, Verdict } from "@/types";
+import { formatCurrency, formatTokens } from "@/lib/utils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EventTimeline } from "@/components/EventTimeline";
 import { VerificationPanel } from "@/components/VerificationPanel";
 import { ArtifactViewer } from "@/components/ArtifactViewer";
+import { ApprovalCard } from "@/components/ApprovalCard";
+import { EmptyState, RelTime, Skeleton, formatDuration, isActive } from "@/components/ui";
+import { getRunsForTask, getTaskById } from "@/components/data";
+
+function mergeEvents(prev: RunEvent[], incoming: RunEvent[]): RunEvent[] {
+  const seen = new Set(prev.map((e) => e.id));
+  const add = incoming.filter((e) => !seen.has(e.id));
+  if (add.length === 0) return prev;
+  return [...prev, ...add].sort((a, b) => a.seq - b.seq || a.created_at.localeCompare(b.created_at));
+}
+
+function Stream({ runId, onEvent }: { runId: string; onEvent: (e: RunEvent) => void }) {
+  useEventStream(`runs/${runId}/stream`, { onEvent });
+  return null;
+}
 
 export default function RunDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const runId = resolvedParams.id;
+  const { id: runId } = use(params);
+  const router = useRouter();
 
   const [run, setRun] = useState<Run | null>(null);
-  const [attempt, setAttempt] = useState<number>(2);
+  const [task, setTask] = useState<Task | null>(null);
+  const [attempts, setAttempts] = useState<Run[]>([]);
   const [criteria, setCriteria] = useState<Criterion[]>([]);
-  const [verdicts, setVerdicts] = useState<Verdict[]>([]);
+  const [baseVerdicts, setBaseVerdicts] = useState<Verdict[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [busy, setBusy] = useState<"stop" | "retry" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const lastSeq = useRef(0);
+  const artifactsRef = useRef<HTMLDivElement>(null);
 
-  const loadRunData = async (selectedAttempt = attempt) => {
-    try {
-      const activeRunId = selectedAttempt === 1 ? `${runId}-att1` : runId;
-      const [r, cv, arts] = await Promise.all([
-        getRun(activeRunId),
-        getRunCriteriaAndVerdicts(activeRunId),
-        getRunArtifacts(activeRunId),
-      ]);
-      if (r) setRun(r);
-      setCriteria(cv.criteria);
-      setVerdicts(cv.verdicts);
-      setArtifacts(arts);
-    } catch (err) {
-      console.error("Failed to load run details:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const refreshRun = useCallback(async () => {
+    const [r, cv, arts] = await Promise.all([
+      getRun(runId),
+      getRunCriteriaAndVerdicts(runId).catch(() => ({ criteria: [], verdicts: [] })),
+      getRunArtifacts(runId).catch(() => []),
+    ]);
+    if (r) setRun(r);
+    setCriteria(cv.criteria);
+    setBaseVerdicts(cv.verdicts);
+    setArtifacts(arts);
+    return r;
+  }, [runId]);
 
   useEffect(() => {
-    loadRunData(attempt);
+    let live = true;
+    setLoading(true);
+    setEvents([]);
+    lastSeq.current = 0;
+    (async () => {
+      try {
+        const [r, evs] = await Promise.all([refreshRun(), getRunEvents(runId, 0)]);
+        if (!live) return;
+        setEvents(evs);
+        if (r) {
+          const [t, list] = await Promise.all([getTaskById(r.task_id), getRunsForTask(r.task_id)]);
+          if (!live) return;
+          setTask(t);
+          setAttempts(list.length ? list : [r]);
+        }
+      } catch {
+        if (live) setError("Could not load this run.");
+      } finally {
+        if (live) setLoading(false);
+      }
+    })();
+    return () => { live = false; };
+  }, [runId, refreshRun]);
 
-    // Subscribe to SSE event stream with auto-reconnection
-    const unsubscribe = subscribeToRunStream(
-      runId,
-      (newEvent) => {
-        setEvents((prev) => {
-          if (prev.some((e) => e.id === newEvent.id)) return prev;
-          return [...prev, newEvent];
-        });
-      },
-      (err) => console.warn("SSE stream reconnection notice:", err)
-    );
+  useEffect(() => {
+    lastSeq.current = events.reduce((m, e) => Math.max(m, e.seq), 0);
+  }, [events]);
 
-    return () => unsubscribe();
-  }, [runId, attempt]);
+  const active = !!run && (isActive(run.status) || run.status === "waiting_approval");
 
-  const handleStop = async () => {
-    if (!run) return;
+  const onStreamEvent = useCallback((e: RunEvent) => {
+    if (e.run_id !== runId) return;
+    setEvents((p) => mergeEvents(p, [e]));
+    refreshRun().catch(() => {});
+  }, [runId, refreshRun]);
+
+  // Fallback and catch-up after a dropped connection: the stream resumes via Last-Event-ID, this fills any gap.
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(async () => {
+      const more = await getRunEvents(runId, lastSeq.current).catch(() => []);
+      if (more.length) setEvents((p) => mergeEvents(p, more));
+      refreshRun().catch(() => {});
+    }, 5000);
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => { clearInterval(t); clearInterval(tick); };
+  }, [active, runId, refreshRun]);
+
+  const verdicts = useMemo(() => {
+    const m = new Map(baseVerdicts.map((v) => [v.check_id, v]));
+    for (const e of events) {
+      if (e.type === "check.result") {
+        const v = e.payload as unknown as Verdict;
+        if (v.check_id) m.set(v.check_id, { ...v, evidence: v.evidence ?? "", cost_usd: v.cost_usd ?? 0 });
+      }
+    }
+    return [...m.values()];
+  }, [baseVerdicts, events]);
+
+  const pendingApprovals = useMemo(() => {
+    const decided = new Set(events.filter((e) => e.type === "approval.decided").map((e) => String(e.payload.approval_id)));
+    return events.filter((e) => e.type === "approval.requested" && !decided.has(String(e.payload.approval_id)));
+  }, [events]);
+
+  const stop = async () => {
+    if (!run || !confirm("Stop this run?")) return;
+    setBusy("stop");
+    setError(null);
     try {
-      setActionLoading(true);
       await stopRun(run.id);
-      loadRunData(attempt);
-    } catch (err) {
-      console.error("Failed to stop run:", err);
+      await refreshRun();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Stop failed");
     } finally {
-      setActionLoading(false);
+      setBusy(null);
     }
   };
 
-  const handleRetry = async () => {
+  const retry = async () => {
     if (!run) return;
+    setBusy("retry");
+    setError(null);
     try {
-      setActionLoading(true);
-      await retryTask(run.task_id);
-      setAttempt((prev) => prev + 1);
-      loadRunData(attempt + 1);
-    } catch (err) {
-      console.error("Failed to retry run:", err);
-    } finally {
-      setActionLoading(false);
+      const res = await retryTask(run.task_id);
+      router.push(`/runs/${res.run.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Retry failed");
+      setBusy(null);
     }
   };
 
-  if (!run && !loading) {
+  if (loading && !run) {
+    return <div className="space-y-4"><Skeleton rows={2} /><Skeleton rows={4} /></div>;
+  }
+  if (!run) {
     return (
-      <div className="py-20 text-center space-y-3">
-        <h2 className="text-base font-semibold text-foreground">Run not found</h2>
-        <Link href="/tasks" className="text-xs text-blue-500 hover:underline">
-          Return to Tasks
-        </Link>
-      </div>
+      <EmptyState
+        title="Run not found"
+        hint={error ?? "It may have been deleted, or the link is wrong."}
+        action={<Link href="/tasks" className="text-xs text-blue-500 hover:underline">Back to tasks</Link>}
+      />
     );
   }
 
-  const isRunning = run && ["planning", "executing", "verifying"].includes(run.status);
+  const title = task?.title ?? `Run ${run.id}`;
+  const attemptList = attempts.length ? attempts : [run];
 
   return (
-    <div className="space-y-6">
-      {/* Back button & Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-        <Link href="/tasks" className="hover:text-foreground flex items-center gap-1">
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Tasks</span>
+    <div className="space-y-4 sm:space-y-6">
+      {run && active && <Stream runId={runId} onEvent={onStreamEvent} />}
+
+      <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground min-w-0">
+        <Link href="/tasks" className="hover:text-foreground flex items-center gap-1 shrink-0">
+          <ArrowLeft className="w-3.5 h-3.5" />Tasks
         </Link>
         <span>/</span>
-        <span className="text-foreground">{runId}</span>
+        <span className="text-foreground truncate">{run.id}</span>
       </div>
 
-      {/* 3.3 Header */}
-      {run && (
-        <div className="p-4 sm:p-6 rounded-xl border border-border bg-card/60 backdrop-blur space-y-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <StatusBadge status={run.status} />
-
-                <span className="text-xs font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  agent/{run.agent}
-                </span>
-
-                <span className="text-xs font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1">
-                  <Cpu className="w-3 h-3 text-purple-400" />
-                  {run.model_profile}
-                </span>
-              </div>
-
-              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground pt-1">
-                Make 3 Instagram ad variants for our oral weight-loss program, launch Monday
-              </h1>
-            </div>
-
-            {/* Action Buttons */}
+      <div className="p-3 sm:p-5 rounded-xl border border-border bg-card/60 space-y-3 sm:space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+          <div className="space-y-1.5 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              {isRunning ? (
-                <button
-                  onClick={handleStop}
-                  disabled={actionLoading}
-                  className="px-3 py-1.5 text-xs font-semibold text-rose-500 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg transition-colors flex items-center gap-1.5"
-                >
-                  <Square className="w-3.5 h-3.5 fill-current" />
-                  <span>Stop Run</span>
-                </button>
-              ) : (
-                <button
-                  onClick={handleRetry}
-                  disabled={actionLoading}
-                  className="px-3 py-1.5 text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/80 border border-border rounded-lg transition-colors flex items-center gap-1.5"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>New Attempt</span>
-                </button>
-              )}
-
-              <button
-                onClick={() => alert("Opening sandbox file inspector: /workspace/artifacts/")}
-                className="px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-card border border-border hover:bg-secondary rounded-lg transition-colors flex items-center gap-1.5"
-              >
-                <FolderOpen className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Sandbox Files</span>
-              </button>
+              <StatusBadge status={run.status} />
+              <span className="text-xs font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground">agent/{run.agent}</span>
+              <span className="text-xs font-mono px-2 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1">
+                <Cpu className="w-3 h-3 text-purple-500" />{run.model_profile || "—"}
+              </span>
             </div>
+            <h1 className="text-base sm:text-xl font-bold tracking-tight text-foreground break-words">{title}</h1>
+            {run.current_step && active && (
+              <p className="text-xs font-mono text-muted-foreground flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                <span className="truncate">{run.current_step}</span>
+              </p>
+            )}
           </div>
 
-          {/* Meta & Attempts Selector */}
-          <div className="pt-3 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
-            {/* Attempt Switcher */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-muted-foreground font-sans">Attempt:</span>
-              <button
-                onClick={() => setAttempt(1)}
-                className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                  attempt === 1
-                    ? "bg-foreground text-background font-bold"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Attempt 1 (Failed check)
+          <div className="flex flex-wrap items-center gap-2">
+            {active && (
+              <button onClick={stop} disabled={busy !== null} className="px-3 py-2 sm:py-1.5 text-xs font-semibold text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+                <Square className="w-3.5 h-3.5 fill-current" />{busy === "stop" ? "Stopping…" : "Stop"}
               </button>
-              <button
-                onClick={() => setAttempt(2)}
-                className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                  attempt === 2
-                    ? "bg-foreground text-background font-bold"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Attempt 2 (Succeeded)
+            )}
+            {!active && (
+              <button onClick={retry} disabled={busy !== null} className="px-3 py-2 sm:py-1.5 text-xs font-semibold text-foreground bg-secondary hover:bg-secondary/80 border border-border rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+                <RotateCcw className="w-3.5 h-3.5" />{busy === "retry" ? "Starting…" : "Retry"}
               </button>
-            </div>
-
-            {/* Totals: Tokens, Cost, Duration */}
-            <div className="flex flex-wrap items-center gap-4 text-muted-foreground">
-              <span>
-                Tokens: <strong className="text-foreground">{formatTokens(run.tokens_in + run.tokens_out)}</strong> ({formatTokens(run.tokens_in)} in / {formatTokens(run.tokens_out)} out)
-              </span>
-              <span>
-                Cost: <strong className="text-emerald-500">{formatCurrency(run.cost_usd)}</strong>
-              </span>
-              <span>
-                Duration: <strong className="text-foreground">92s</strong>
-              </span>
-            </div>
+            )}
+            <button
+              onClick={() => artifactsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-card border border-border hover:bg-secondary rounded-lg flex items-center gap-1.5"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />Sandbox files
+            </button>
           </div>
         </div>
+
+        {error && <p className="text-xs text-rose-500">{error}</p>}
+
+        <div className="pt-3 border-t border-border flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-muted-foreground">Attempt</span>
+            {attemptList.map((a) => (
+              <Link
+                key={a.id}
+                href={`/runs/${a.id}`}
+                className={`px-2 py-1 rounded font-mono ${a.id === run.id ? "bg-foreground text-background font-bold" : "bg-muted text-muted-foreground hover:text-foreground"}`}
+              >
+                {a.attempt}
+                {a.id !== run.id && <span className="ml-1 opacity-70">{a.status}</span>}
+              </Link>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-5 gap-y-1 font-mono text-muted-foreground">
+            <span>Tokens <strong className="text-foreground">{formatTokens(run.tokens_in + run.tokens_out)}</strong> <span className="hidden sm:inline">({formatTokens(run.tokens_in)} in / {formatTokens(run.tokens_out)} out)</span></span>
+            <span>Cost <strong className="text-emerald-500">{formatCurrency(run.cost_usd)}</strong></span>
+            <span>Duration <strong className="text-foreground">{formatDuration(run.started_at, active ? undefined : run.ended_at, now)}</strong></span>
+            <span>Started <RelTime iso={run.started_at} className="text-foreground" /></span>
+          </div>
+        </div>
+      </div>
+
+      {pendingApprovals.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-1.5">
+            <ShieldAlert className="w-4 h-4" />Needs you
+          </h2>
+          {pendingApprovals.map((e) => (
+            <ApprovalCard
+              key={e.id}
+              hideRunLink
+              approval={{
+                id: String(e.payload.approval_id), run_id: e.run_id, question: String(e.payload.question ?? "Approval requested"),
+                options: (e.payload.options as string[]) ?? ["Approve", "Reject"], status: "pending",
+              }}
+              onDecided={() => refreshRun().catch(() => {})}
+            />
+          ))}
+        </section>
       )}
 
-      {/* Main Split Layout: Left Timeline vs Right Verification & Artifacts */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Timeline (Live Streamed) */}
-        <div className="lg:col-span-7 h-[700px] flex flex-col">
-          <EventTimeline events={events} autoScroll={true} />
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+        <div className="lg:col-span-7 h-[65vh] lg:h-[calc(100vh-15rem)] lg:min-h-[520px] lg:sticky lg:top-4">
+          <EventTimeline events={events} criteria={criteria} live={active} />
         </div>
-
-        {/* Right Column: Verification Report & Artifacts Preview */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-5 space-y-4 sm:space-y-6 min-w-0">
           <VerificationPanel criteria={criteria} verdicts={verdicts} />
-          <ArtifactViewer artifacts={artifacts} />
+          <div ref={artifactsRef} className="scroll-mt-4">
+            <ArtifactViewer artifacts={artifacts} />
+          </div>
         </div>
       </div>
     </div>

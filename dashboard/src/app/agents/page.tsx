@@ -6,16 +6,17 @@ import { Bot, ArrowRight, Wrench, CheckCircle2, Cpu, Coins, Shield } from "lucid
 import { getAgents } from "@/lib/api";
 import type { AgentDefinition } from "@/types";
 import { formatCurrency } from "@/lib/utils";
+import { EmptyState, Skeleton } from "@/components/ui";
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getAgents().then((data) => {
-      setAgents(data);
-      setLoading(false);
-    });
+    getAgents()
+      .then(setAgents)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -32,6 +33,10 @@ export default function AgentsPage() {
       </div>
 
       {/* Agents Grid */}
+      {loading && <Skeleton rows={3} />}
+      {!loading && agents.length === 0 && (
+        <EmptyState title="No agents defined" hint="Add an agent definition to config/agents/ and reload." />
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {agents.map((agent) => (
           <Link

@@ -1,87 +1,81 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ShieldAlert, CheckCircle2, History, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, History, ShieldAlert } from "lucide-react";
 import { getApprovals } from "@/lib/api";
-import type { Approval } from "@/types";
+import { useEventStream } from "@/lib/sse";
+import type { Approval, RunEvent } from "@/types";
 import { ApprovalCard } from "@/components/ApprovalCard";
+import { EmptyState, Skeleton } from "@/components/ui";
 
 export default function ApprovalsPage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  const loadApprovals = async () => {
+  const load = useCallback(async () => {
     try {
-      setLoading(true);
-      const data = await getApprovals();
-      setApprovals(data);
-    } catch (err) {
-      console.error("Failed to load approvals:", err);
+      setApprovals(await getApprovals());
+      setFailed(false);
+    } catch {
+      setFailed(true);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadApprovals();
   }, []);
 
-  const pendingList = approvals.filter((a) => a.status === "pending");
-  const historyList = approvals.filter((a) => a.status !== "pending");
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onEvent = useCallback((e: RunEvent) => {
+    if (e.type !== "approval.requested" && e.type !== "approval.decided") return;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(load, 300);
+  }, [load]);
+  useEventStream("stream", { onEvent });
+
+  useEffect(() => {
+    load();
+    const poll = setInterval(load, 20000);
+    return () => { clearInterval(poll); clearTimeout(timer.current); };
+  }, [load]);
+
+  const pending = approvals.filter((a) => a.status === "pending");
+  const history = approvals.filter((a) => a.status !== "pending");
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-5 sm:space-y-6">
       <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <ShieldAlert className="w-5 h-5 text-amber-500" />
-          <span>Human Approvals Queue</span>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
+          <ShieldAlert className="w-5 h-5 text-amber-500" />Approvals
         </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Gated human-in-the-loop decisions for critical tool executions and high-risk actions.
-        </p>
+        <p className="text-xs sm:text-sm text-muted-foreground">Risky actions pause here until you approve or reject them.</p>
       </div>
 
-      {/* Pending Section */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between pb-1">
-          <h2 className="text-xs font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-1.5">
-            <AlertTriangle className="w-4 h-4" />
-            <span>Pending Authorization ({pendingList.length})</span>
-          </h2>
-        </div>
+      {failed && approvals.length === 0 && (
+        <EmptyState title="Could not load approvals" hint="Check the API connection." action={<button onClick={load} className="text-xs text-blue-500 hover:underline">Retry</button>} />
+      )}
 
-        {pendingList.length === 0 ? (
-          <div className="p-8 text-center rounded-xl border border-dashed border-border text-muted-foreground text-xs space-y-1">
-            <CheckCircle2 className="w-6 h-6 text-emerald-500 mx-auto mb-1 opacity-70" />
-            <p className="font-medium text-foreground">All clear — no pending approvals</p>
-            <p className="text-[11px] text-muted-foreground">
-              Risky tool calls (e.g. email dispatch, DB mutations) will pause here for sign-off.
-            </p>
-          </div>
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-1.5">
+          <AlertTriangle className="w-4 h-4" />Pending ({pending.length})
+        </h2>
+        {loading ? (
+          <Skeleton rows={2} />
+        ) : pending.length === 0 ? (
+          <EmptyState icon={<CheckCircle2 className="w-6 h-6 text-emerald-500" />} title="All clear" hint="Nothing is waiting on you. Tool calls that need sign-off will appear here and in Telegram." />
         ) : (
-          <div className="space-y-3">
-            {pendingList.map((app) => (
-              <ApprovalCard key={app.id} approval={app} onDecided={loadApprovals} />
-            ))}
-          </div>
+          pending.map((a) => <ApprovalCard key={a.id} approval={a} onDecided={load} />)
         )}
       </section>
 
-      {/* History Section */}
       <section className="space-y-3 pt-4 border-t border-border">
-        <div className="flex items-center justify-between pb-1">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-            <History className="w-4 h-4" />
-            <span>Audit Trail & Historical Decisions ({historyList.length})</span>
-          </h2>
-        </div>
-
-        <div className="space-y-3">
-          {historyList.map((app) => (
-            <ApprovalCard key={app.id} approval={app} />
-          ))}
-        </div>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          <History className="w-4 h-4" />History ({history.length})
+        </h2>
+        {!loading && history.length === 0 ? (
+          <EmptyState title="No past decisions" hint="Approved and rejected requests are kept here as an audit trail." />
+        ) : (
+          history.map((a) => <ApprovalCard key={a.id} approval={a} />)
+        )}
       </section>
     </div>
   );

@@ -1,32 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, XCircle, AlertTriangle, ArrowUpRight, MessageSquare } from "lucide-react";
 import type { Approval } from "@/types";
 import { decideApproval } from "@/lib/api";
-import { formatRelativeTime } from "@/lib/utils";
+import { RelTime } from "./ui";
 
 interface ApprovalCardProps {
   approval: Approval;
   onDecided?: (updated: Approval) => void;
-  compact?: boolean;
+  hideRunLink?: boolean;
 }
 
-export function ApprovalCard({ approval, onDecided, compact = false }: ApprovalCardProps) {
+export function ApprovalCard({ approval, onDecided, hideRunLink = false }: ApprovalCardProps) {
   const [submitting, setSubmitting] = useState(false);
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [note, setNote] = useState("");
   const [currentApproval, setCurrentApproval] = useState<Approval>(approval);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setCurrentApproval(approval), [approval.id, approval.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDecision = async (decision: "approve" | "reject") => {
     try {
       setSubmitting(true);
+      setError(null);
       const updated = await decideApproval(approval.id, decision, note.trim() || undefined);
       setCurrentApproval(updated);
       onDecided?.(updated);
     } catch (err) {
-      console.error("Failed to decide approval:", err);
+      setError(err instanceof Error ? err.message : "Decision failed, try again");
     } finally {
       setSubmitting(false);
     }
@@ -60,17 +64,17 @@ export function ApprovalCard({ approval, onDecided, compact = false }: ApprovalC
               {currentApproval.status.replace("_", " ")}
             </span>
 
-            <Link
+            {!hideRunLink && <Link
               href={`/runs/${currentApproval.run_id}`}
               className="text-xs font-mono text-muted-foreground hover:text-foreground inline-flex items-center gap-1 group"
             >
               <span>run/{currentApproval.run_id}</span>
               <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-            </Link>
+            </Link>}
 
             {currentApproval.decided_at && (
               <span className="text-xs text-muted-foreground">
-                Decided {formatRelativeTime(currentApproval.decided_at)} by {currentApproval.decided_by}
+                Decided <RelTime iso={currentApproval.decided_at} />{currentApproval.decided_by ? ` by ${currentApproval.decided_by}` : ""}
               </span>
             )}
           </div>
@@ -111,7 +115,7 @@ export function ApprovalCard({ approval, onDecided, compact = false }: ApprovalC
               type="button"
               disabled={submitting}
               onClick={() => handleDecision("reject")}
-              className="px-3 py-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-md transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-rose-500 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-md transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <XCircle className="w-3.5 h-3.5" />
               <span>Reject</span>
@@ -121,7 +125,7 @@ export function ApprovalCard({ approval, onDecided, compact = false }: ApprovalC
               type="button"
               disabled={submitting}
               onClick={() => handleDecision("approve")}
-              className="px-3 py-1.5 text-xs font-medium text-emerald-950 dark:text-emerald-50 bg-emerald-500 hover:bg-emerald-400 font-semibold rounded-md transition-colors shadow-sm shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-emerald-950 dark:text-emerald-50 bg-emerald-500 hover:bg-emerald-400 font-semibold rounded-md transition-colors shadow-sm shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-1.5"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Approve</span>
@@ -129,6 +133,8 @@ export function ApprovalCard({ approval, onDecided, compact = false }: ApprovalC
           </div>
         )}
       </div>
+
+      {error && <p className="mt-2 text-xs text-rose-500">{error}</p>}
 
       {isPending && showNoteInput && (
         <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
