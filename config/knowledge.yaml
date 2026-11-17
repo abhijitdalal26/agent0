@@ -1,0 +1,5 @@
+# kind: sql  -> dsn_env names an env var holding a READ-ONLY connection string
+# kind: docs -> path is relative to the repo root; markdown/txt files are chunked and indexed
+sources: []
+#  - {name: warehouse, kind: sql, dsn_env: WAREHOUSE_RO_URL, timeout_ms: 5000, max_rows: 50}
+#  - {name: handbook, kind: docs, path: docs, patterns: ["**/*.md"]}
