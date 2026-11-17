@@ -1,54 +1,80 @@
-# Session handoff — 2026-11-17 (Devin)
+# Handoff — 2026-11-17
 
-State of the environment and what was done while waiting. Read AGENTS.md and docs/architecture.md first.
+Read this first after a restart, then `AGENTS.md` and `docs/architecture.md`.
 
-## Environment status
+## What agent0 is
 
-- `uv sync` — done, venv healthy (106 packages resolved).
-- `uv run pytest` — **295 passed, 4 skipped** (unit tests, no network/keys needed).
-- `uv run ruff check .` — clean.
-- `uv run pyright` — **0 errors** (was 125; all fixed this session — see below).
-- `.env` exists but `GROQ_API_KEY` and `GEMINI_API_KEY` are **empty placeholders** — real keys needed before any live `agent0 run` / `agent0 models` shows profiles as ready (cli.py loads `.env` via dotenv; `uv run agent0 models` currently shows every profile "missing").
+A general multi-model agent harness: plan → execute → verify → retry, Postgres memory, approvals, Telegram, dashboard. It is for an internship application: a 20–60 min single-take video of building with AI, plus a CV. The deadline is **Sat 2026-11-28**. The demo uses the fictional brand "Northwind Health", so don't put the real company name in the repo. Repo: https://github.com/abhijitdalal26/agent0 (public).
 
-## Blocked: Docker / Postgres
+## State: code complete, not yet run against real models
 
-- Docker Desktop 4.x is installed (`C:\Program Files\Docker`) but **cannot start the engine**: it is configured for the WSL2 backend (`EngineTypeWindows: wsl2` in `%APPDATA%\Docker\settings-store.json`) and **WSL is not installed**.
-- OS is **Windows 11 Home** — the Hyper-V backend is not available, so WSL2 is the only option.
-- To unblock (needs admin + reboot, user action):
-  1. In an elevated PowerShell: `wsl --install`
-  2. Reboot, then launch Docker Desktop once so it finishes setup.
-  3. `docker compose -f infra/docker-compose.yml up -d` (compose file is ready; pulls `pgvector/pgvector:pg17`, mounts `src/agent0/db/schema.sql`).
-- Until then, everything that needs Postgres (`agent0 db-init`, memory facts, `serve` with DB) is unavailable. The local/no-Docker quick start in README still works (`--sandbox local`, `uv run agent0 run ...`).
+- `main` is pushed. All subagent branches are merged: cloud-deploy, dashboard-security, dash-settings-pages and dashboard polish.
+- `uv run pytest`: 299 passed. Ruff and pyright are clean. Dashboard `tsc` and `pnpm build` are clean (20 routes).
+- Verified live on this machine:
+  - Postgres integration tests.
+  - Docker sandbox.
+  - Temporal workflow test.
+  - API endpoints against real Postgres, including `/healthz`.
+  - Dashboard login gate, proxy (401 without a session) and every page loading.
+  - Secrets: stored encrypted, shown only as `••••last4`, deleted.
+- **Not yet verified:**
+  - Real Groq/Gemini calls. The keys in `.env` are empty.
+  - Telegram.
+  - `docker build` of the image (killed for low RAM).
+  - The cloud compose: Caddy, Temporal container, E2B.
 
-## Work done this session
+## Environment facts (Windows)
 
-- Fixed pyright errors in `src/agent0/sandbox/local.py` (`os.killpg` / `signal.SIGKILL` are POSIX-only symbols; made the kill path platform-safe without changing runtime behavior). Verify: `uv run pytest tests/sandbox/test_local.py -q` and `uv run pyright src/agent0/sandbox/local.py`.
-- Fixed ~109 pyright errors in `src/agent0/orchestrator/temporal.py`: `_SHORT`/`_MODEL` kwargs dicts needed `dict[str, Any]` annotations so `workflow.execute_activity(..., **kwargs)` overload resolution works.
-- **Real bug fixed** in `src/agent0/orchestrator/steps.py`: `BudgetMeter(budget=budget)` passed a `budget=` kwarg that `BudgetMeter` (a `Budget` subclass) doesn't have — pydantic silently ignored it, so every run used the default budget (max_usd=1.0, max_steps=40, max_minutes=30) regardless of task/agent budget. Now `BudgetMeter(**budget.model_dump())`.
-- Added regression test `test_task_budget_reaches_budget_meter` in `tests/orchestrator/test_engine_e2e.py` proving task budget fields reach the meter. Note: `agents/executor/agent.md` sets `budget: {max_steps: 40}` which overrides the task's `max_steps` via `AgentDef.effective_budget` — by design, but worth confirming that's intended (a task cannot lower max_steps below the agent's value).
-- Pyright debt fully cleaned: `db/pool.py` now exposes a `PgPool = AsyncConnectionPool[AsyncConnection[DictRow]]` alias so `dict_row` results type correctly (this fixed the TupleRow-vs-dict errors in `db/repos.py`, `memory/pg.py`, `secrets/store.py`, `knowledge/`); `models/media.py` uses `import google.genai as genai` (the `from google import genai` form fails — `google` is a namespace package); `api/errors.py` accepts `Mapping` headers; `serve.py` close() None-checks the channel; `cli.py` prompt fallback.
+- Docker Postgres runs on **port 5434** because native Postgres services already use 5432 and 5433. Use `127.0.0.1`, not `localhost`: `localhost` causes psycopg_pool timeouts.
+- psycopg async needs the SelectorEventLoop. The CLI's `_run_async` and `serve` handle this, and so does `tests/conftest.py`. That loop can't spawn subprocesses, so `LocalSandbox` runs `Popen` in a thread.
+- The user's own servers run on ports 3000 and 8000. Don't kill them; test on 3100/8100.
+- Low RAM: background builds/servers get killed. Don't restart heavy processes unless asked.
 
-## Dashboard status
+## Secrets and config locations (never paste values in chat)
 
-- `dashboard/` is a Next.js 15 + React 19 + Tailwind app, already scaffolded with all spec pages (`activity`, `agents`, `approvals`, `extensions`, `memory`, `models`, `runs/[id]`, `schedules`, `settings`, `tasks`, `usage`) plus an `/api/proxy/[...path]` route and `src/lib/api.ts` client.
-- `dashboard/.env.local` has `NEXT_PUBLIC_MOCK=1` — the UI runs entirely on `src/mocks/fixtures.ts` until the flag is removed.
-- Verified this session: `pnpm exec tsc --noEmit` clean, `pnpm build` succeeds (14 routes).
+- `.env` (git-ignored) holds:
+  - `GROQ_API_KEY` and `GEMINI_API_KEY`, which are **empty, to be added by the user**
+  - `AGENT0_API_KEY`, `AGENT0_SECRET_KEY` and `AGENT0_DATABASE_URL`
+  - Telegram token and allowed users, not set yet
+- `dashboard/.env.local` (git-ignored) holds `AGENT0_API_URL=http://127.0.0.1:8000`, `AGENT0_API_KEY`, `DASHBOARD_PASSWORD` (the login) and `DASHBOARD_SESSION_SECRET`. The old file is `.env.local.bak`.
+- Provider keys can also be added through Dashboard → Settings → Keys, which stores them Fernet-encrypted in Postgres.
 
-## Telegram bot status
+## How to run
 
-- `src/agent0/channels/telegram.py` is feature-complete: `/task`, `/status`, `/stop`, approval inline-keyboard callbacks, photo/audio/document attachments, user allowlist, HTML formatting. Wired in `serve.py` (`status_handler`, `stop_handler`, `wire_notifications`). Unit tests in `tests/channels/test_telegram.py` pass.
-- To activate: set `AGENT0_TELEGRAM_BOT_TOKEN` (from @BotFather) and `AGENT0_TELEGRAM_ALLOWED_USERS` (JSON list of ids or @usernames) in `.env`, then `uv run agent0 serve`. Requires Postgres (see below) for runs/approvals persistence.
+```bash
+docker compose -f infra/docker-compose.yml up -d
+uv run agent0 db-init
+uv run agent0 models                      # profiles should say "ready" once keys are set
+uv run agent0 run "Write primes.py that prints the first 20 primes, with a test"
+uv run agent0 run --task-file examples/northwind/ad-task.json   # the demo
+uv run agent0 serve                       # API :8000 (+ Telegram if token set)
+cd dashboard && pnpm dev                  # :3000, log in with DASHBOARD_PASSWORD
+AGENT0_MOCK=1 DASHBOARD_PASSWORD=dev pnpm dev   # UI only, fake data
+```
 
-## Remaining work (in priority order)
+## Next steps (priority order)
 
-1. **Commit pending changes** — 15 modified files + this file, all verified green. Nothing is committed yet.
-2. **User-side unblock** (see Docker section): WSL install → reboot → Docker Desktop → compose up → `agent0 secrets-keygen` → `agent0 db-init`.
-3. **Keys**: put real `GROQ_API_KEY` / `GEMINI_API_KEY` in `.env`, then `uv run agent0 models` should show profiles ready.
-4. **End-to-end smoke test**: `uv run agent0 run "..." --sandbox docker`, then the Northwind demo `uv run agent0 run --task-file examples/northwind/ad-task.json` — exercises the budget fix, verify loop, and approvals.
-5. **Telegram smoke test** with a real bot token once Postgres is up.
-6. **Dashboard against live API**: remove `NEXT_PUBLIC_MOCK=1` from `dashboard/.env.local`, run `pnpm dev`, click through every page vs `docs/dashboard-spec.md`, fix any wiring gaps (SSE live updates in `api/sse.py`, endpoints in `lib/api.ts` missing server-side, etc.).
-7. **Confirm budget semantics**: `agents/executor/agent.md` sets `budget: {max_steps: 40}` which overrides a task's `max_steps` via `AgentDef.effective_budget` — decide if that's intended or if task budgets should be able to tighten agent budgets.
+1. The user adds the Groq and Gemini keys, then runs `agent0 models`.
+2. Do a live smoke run (primes), then the Northwind demo. Fix whatever breaks with the real providers: model ids in `config/models.yaml`, tool calling and image generation.
+3. Telegram smoke test: `/task`, the approval buttons and `/status`.
+4. Click through the dashboard against the live API during a real run (SSE timeline, approvals, usage).
+5. `docker build -t agent0 .` when RAM allows.
+6. Optionally do a cloud deploy following `docs/deploy.md`.
+7. Rehearse the video flow.
 
-## Known debt for next session
+## Known gaps / debt
 
-- `tests/tools/test_tools.py::test_shell_and_events` emits a PytestUnraisableExceptionWarning about an unclosed Proactor pipe transport on Windows — cosmetic, but could be cleaned up.
+- Agent edit endpoints return 501. There is no sandbox file browser and no browser check type.
+- Temporal durability is per attempt, not per model/tool call. `docs/reference-notes.md` lists the options.
+- Temporal connect has no TLS, so Temporal Cloud isn't supported.
+- Integration tests write to the main DB. They should use a separate test DB.
+- `agents/executor/agent.md` sets `budget.max_steps: 40`, which overrides the task's `max_steps`. Confirm that's intended.
+- Windows prints a cosmetic unclosed-pipe warning in `tests/tools/test_tools.py::test_shell_and_events`.
+
+## Conventions (from the user)
+
+- Few comments, and only where needed.
+- Don't over-engineer, and don't waste tokens.
+- Commit and push after each significant piece of work, using explicit paths and never `git add -A`.
+- Give subagents a model that fits their task.
+- Never copy code from `_reference/claw-code`.
