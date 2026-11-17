@@ -1,0 +1,11 @@
+# Servers are attached per agent via `mcp:` in agent.md. Values may use ${VAR} or ${VAR:-default}.
+servers:
+  - name: filesystem
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "${AGENT0_MCP_FS_ROOT:-.}"]
+    description: Read and write files under one directory.
+  # - name: docs
+  #   transport: http
+  #   url: https://mcp.example.com/mcp
+  #   headers: {Authorization: "Bearer ${DOCS_MCP_TOKEN}"}
