@@ -185,3 +185,11 @@ CREATE TABLE IF NOT EXISTS schedules (
     enabled boolean NOT NULL DEFAULT true,
     last_run_at timestamptz
 );
+
+CREATE TABLE IF NOT EXISTS secrets (
+    name text PRIMARY KEY,
+    ciphertext bytea NOT NULL,
+    last4 text NOT NULL DEFAULT '',
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    updated_by text
+);

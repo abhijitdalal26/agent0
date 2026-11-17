@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Sequence
 
 from pydantic_ai.models import Model
@@ -11,6 +10,7 @@ from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.groq import GroqProvider
 
 from agent0.models.base import ModelProfile
+from agent0.models.registry import resolve_secret
 
 
 class MissingKeyError(RuntimeError):
@@ -18,9 +18,11 @@ class MissingKeyError(RuntimeError):
 
 
 def api_key(profile: ModelProfile) -> str:
-    key = os.environ.get(profile.key_env)
+    key = resolve_secret(profile.key_env)
     if not key:
-        raise MissingKeyError(f"environment variable {profile.key_env} is not set for {profile.name}")
+        raise MissingKeyError(
+            f"key {profile.key_env} is not set (environment or secret store) for {profile.name}"
+        )
     return key
 
 

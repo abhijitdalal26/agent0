@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import yaml
 
 from agent0.core.types import Capability
 from agent0.models.base import ModelProfile
+
+_resolver: Callable[[str], str | None] | None = None
+
+
+def set_secret_resolver(fn: Callable[[str], str | None] | None) -> None:
+    global _resolver
+    _resolver = fn
+
+
+def resolve_secret(name: str) -> str | None:
+    return os.environ.get(name) or (_resolver(name) if _resolver else None) or None
 
 
 class ModelRegistry:
@@ -33,7 +45,7 @@ class ModelRegistry:
         return [
             p
             for p in self._profiles.values()
-            if p.enabled and os.environ.get(p.key_env) and (capability is None or p.capability == capability)
+            if p.enabled and resolve_secret(p.key_env) and (capability is None or p.capability == capability)
         ]
 
     def add(self, profile: ModelProfile) -> None:
