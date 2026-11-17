@@ -47,6 +47,21 @@ Set in `.env`:
 
 In Telegram: `/task <what to do>`, `/status`, `/stop <run id>`. Approvals arrive as buttons.
 
+## Dashboard
+
+```bash
+cd dashboard && pnpm install
+cp .env.example .env.local      # AGENT0_API_URL, AGENT0_API_KEY, DASHBOARD_PASSWORD
+pnpm dev                        # http://localhost:3000, log in with DASHBOARD_PASSWORD
+AGENT0_MOCK=1 DASHBOARD_PASSWORD=dev pnpm dev   # UI only, fake data, no backend
+```
+
+The browser only talks to the dashboard's own server. That server attaches the API key, so neither the key nor the backend URL reaches the browser. Provider keys entered on **Settings → Keys** are encrypted in Postgres and only ever shown as `••••last4`.
+
+## Cloud deploy
+
+See [docs/deploy.md](docs/deploy.md). It covers one VM running Postgres, Temporal, the API and worker, plus Caddy for HTTPS, with E2B sandboxes and the dashboard on Vercel.
+
 ## Durable runs (Temporal)
 
 ```bash
