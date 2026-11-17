@@ -129,13 +129,13 @@ def serve(host: str = typer.Option(None), port: int = typer.Option(None), reload
     from agent0.config import get_settings
 
     s = get_settings()
-    uvicorn.run(
-        "agent0.serve:app_factory",
-        factory=True,
-        host=host or s.api_host,
-        port=port or s.api_port,
-        reload=reload,
+    config = uvicorn.Config(
+        "agent0.serve:app_factory", factory=True, host=host or s.api_host, port=port or s.api_port, reload=reload
     )
+    if reload:
+        uvicorn.Server(config).run()
+    else:
+        _run_async(uvicorn.Server(config).serve())
 
 
 @app.command()
