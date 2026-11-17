@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     skills_dirs: list[Path] = [Path("skills"), Path.home() / ".agent0" / "skills"]
     plugins_dirs: list[Path] = [Path("plugins"), Path.home() / ".agent0" / "plugins"]
     api_key: str = "dev-key"
+    cors_origins: list[str] = ["http://localhost:3000"]
+    secret_key: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     telegram_bot_token: str | None = None
