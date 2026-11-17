@@ -111,6 +111,7 @@ export type Capability =
   | "chat"
   | "vision"
   | "image_gen"
+  | "video_gen"
   | "tts"
   | "stt"
   | "embedding";
@@ -126,10 +127,12 @@ export interface ModelProfile {
     input_per_mtok?: number;
     output_per_mtok?: number;
     per_image?: number;
+    per_video?: number;
     per_1k_chars?: number;
   };
   key_configured: boolean;
   enabled: boolean;
+  key_env_var?: string;
   stats?: {
     calls_7d: number;
     pass_rate: number;
