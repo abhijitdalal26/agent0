@@ -13,6 +13,7 @@ import {
   KeyRound,
   Layers,
   LayoutDashboard,
+  LogOut,
   ListTodo,
   Menu,
   Receipt,
@@ -42,13 +43,29 @@ export function Navbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState<number>(1);
-  const isMock = process.env.NEXT_PUBLIC_MOCK === "1";
+  const [isMock, setIsMock] = useState(false);
 
   useEffect(() => {
-    getOverviewStats().then((stats) => {
-      setPendingApprovals(stats.waiting_approval);
-    });
+    if (pathname === "/login") return;
+    getOverviewStats()
+      .then((stats) => setPendingApprovals(stats.waiting_approval))
+      .catch(() => {});
   }, [pathname]);
+
+  useEffect(() => {
+    if (pathname === "/login") return;
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => setIsMock(!!s?.mock))
+      .catch(() => {});
+  }, [pathname]);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.assign("/login");
+  };
+
+  if (pathname === "/login") return null;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-md">
@@ -109,6 +126,14 @@ export function Navbar() {
         {/* Actions right */}
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          <button
+            onClick={logout}
+            className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary"
+            aria-label="Log out"
+            title="Log out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
 
           {/* Mobile hamburger button */}
           <button

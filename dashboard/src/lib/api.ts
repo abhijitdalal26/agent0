@@ -1,542 +1,511 @@
+// Typed client for the agent0 API (spec section 5). Every call goes through apiFetch (lib/http.ts)
+// and therefore the server-side proxy; mock mode is handled by the proxy, not here.
+// Functions keep the shapes the pages were built against and adapt the backend wire format
+// (paginated envelopes, null-for-missing, renamed fields) at this boundary.
 import type {
-  OverviewStats,
-  Task,
-  Run,
-  Criterion,
-  Verdict,
-  RunEvent,
-  Approval,
-  ModelProfile,
-  UsageRecord,
-  Extension,
-  Artifact,
   AgentDefinition,
+  Approval,
+  Artifact,
+  Criterion,
+  EventFilters,
+  Extension,
+  ExtensionTestResult,
   MemoryDoc,
+  MemoryFact,
+  ModelProfile,
+  OverviewStats,
+  Paginated,
+  RouterPreview,
+  Run,
+  RunEvent,
   Schedule,
+  ScheduleInput,
+  SecretItem,
+  SecretTestResult,
+  Task,
+  ToolPermission,
+  UsageFilters,
+  UsageGroupBy,
+  UsageRecord,
+  UsageSummary,
+  Verdict,
 } from "@/types";
-import {
-  MOCK_OVERVIEW_STATS,
-  MOCK_APPROVALS,
-  MOCK_TASKS,
-  MOCK_RUNS,
-  MOCK_CRITERIA_VERDICTS,
-  MOCK_RUN_EVENTS,
-  MOCK_ARTIFACTS,
-  MOCK_AGENTS,
-  MOCK_MODEL_PROFILES,
-  MOCK_USAGE_RECORDS,
-  MOCK_EXTENSIONS,
-  MOCK_MEMORY_DOCS,
-  MOCK_SCHEDULES,
-} from "@/mocks/fixtures";
+import { ApiError, apiFetch, proxyUrl } from "./http";
 
-const isMock = process.env.NEXT_PUBLIC_MOCK === "1" || !process.env.NEXT_PUBLIC_API_URL;
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+// ---------------------------------------------------------------- helpers
 
-// In-memory mock state for live interactions without backend
-let stateApprovals = [...MOCK_APPROVALS];
-let stateTasks = [...MOCK_TASKS];
-let stateRuns = { ...MOCK_RUNS };
-let stateRunEvents = { ...MOCK_RUN_EVENTS };
-let stateCriteriaVerdicts = { ...MOCK_CRITERIA_VERDICTS };
-let stateAgents = [...MOCK_AGENTS];
-let stateSchedules = [...MOCK_SCHEDULES];
+type Raw = Record<string, any>;
+
+function qs(params: Record<string, string | number | boolean | null | undefined>): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "" && v !== "all") sp.set(k, String(v));
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+}
+
+const enc = encodeURIComponent;
+const post = (body?: unknown): RequestInit => ({ method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+const put = (body: unknown): RequestInit => ({ method: "PUT", body: JSON.stringify(body) });
+
+/** Fetch every page of a list endpoint (follows next_cursor). Bounded to avoid runaway loops. */
+async function listAll<T = Raw>(path: string, params: Record<string, string | number | boolean | undefined> = {}, maxPages = 20): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const res = await apiFetch<Paginated<T>>(`${path}${qs({ limit: 200, ...params, cursor })}`);
+    out.push(...res.items);
+    if (!res.next_cursor) break;
+    cursor = res.next_cursor;
+  }
+  return out;
+}
+
+const orUndef = <T,>(v: T | null | undefined): T | undefined => (v === null ? undefined : v);
+
+function mapRun(r: Raw): Run {
+  return { ...(r as Run), current_step: orUndef(r.current_step), ended_at: orUndef(r.ended_at) };
+}
+
+function mapTask(t: Raw): Task {
+  const latest = t.latest_run ? mapRun(t.latest_run) : null;
+  return {
+    ...(t as Task),
+    latest_run: latest,
+    checks_total: latest?.checks_total,
+    checks_passed: latest?.checks_passed,
+    cost_usd: latest?.cost_usd,
+  };
+}
+
+function mapApproval(a: Raw): Approval {
+  return {
+    ...(a as Approval),
+    decided_by: orUndef(a.decided_by),
+    decided_at: orUndef(a.decided_at),
+    note: orUndef(a.note),
+  };
+}
+
+function mapVerdict(v: Raw): Verdict {
+  return { ...(v as Verdict), score: orUndef(v.score) };
+}
+
+function mapArtifact(a: Raw): Artifact {
+  // Backend urls are /api/v1/...; the browser must reach them via the proxy.
+  const url = typeof a.url === "string" ? proxyUrl(a.url.replace(/^\/api\/v1\//, "")) : a.url;
+  return { ...(a as Artifact), url };
+}
+
+function mapProfile(p: Raw): ModelProfile {
+  return { ...(p as ModelProfile), key_env_var: p.key_env_var ?? p.key_env ?? undefined };
+}
+
+const PERMISSIONS = new Set(["safe", "needs_approval", "forbidden"]);
+
+function mapAgent(a: Raw): AgentDefinition {
+  const policy: Raw = a.policy ?? {};
+  const tools: ToolPermission[] = (a.tools ?? []).map((t: string | ToolPermission) => {
+    if (typeof t !== "string") return t;
+    const p = policy[t];
+    return { name: t, permission: (PERMISSIONS.has(p) ? p : "safe") as ToolPermission["permission"] };
+  });
+  const rate = typeof a.success_rate === "number" ? a.success_rate : null;
+  return {
+    id: a.id ?? a.name,
+    name: a.name,
+    description: a.description ?? "",
+    instructions: a.instructions ?? "",
+    model_profile: a.model_profile ?? "",
+    tool_count: a.tool_count ?? tools.length,
+    runs_7d: a.runs_7d ?? 0,
+    // Backend reports a 0..1 fraction (or null with no finished runs); the UI shows a percentage.
+    success_rate: rate === null ? 0 : Math.round(rate * 1000) / 10,
+    avg_cost: a.avg_cost ?? a.avg_cost_usd ?? 0,
+    tools,
+    budgets: a.budgets ?? a.budget ?? {},
+    versions: a.versions,
+  };
+}
+
+function mapExtension(e: Raw): Extension {
+  const cfg: Raw = e.config ?? {};
+  return {
+    ...(e as Extension),
+    source_path: e.source_path ?? cfg.path,
+    runs_count: e.runs_count ?? cfg.runs_count,
+    tools: e.tools ?? cfg.tools,
+    bundles: e.bundles ?? cfg.bundles,
+    content_markdown: e.content_markdown ?? cfg.content_markdown,
+  };
+}
+
+function cronReadable(cron: string): string {
+  const [min, hour, dom, mon, dow] = cron.trim().split(/\s+/);
+  if (cron.trim().split(/\s+/).length !== 5) return cron;
+  const pad = (n: string) => n.padStart(2, "0");
+  const time = /^\d+$/.test(min) && /^\d+$/.test(hour) ? `${pad(hour)}:${pad(min)} UTC` : null;
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  if (time && dom === "*" && mon === "*" && dow === "*") return `Every day at ${time}`;
+  if (time && dom === "*" && mon === "*" && /^[0-6]$/.test(dow)) return `Every ${days[Number(dow)]} at ${time}`;
+  if (min.startsWith("*/") && hour === "*") return `Every ${min.slice(2)} minutes`;
+  return cron;
+}
+
+function mapSchedule(s: Raw): Schedule {
+  return {
+    id: s.id,
+    agent: s.agent,
+    cron: s.cron,
+    cron_readable: s.cron_readable ?? cronReadable(s.cron),
+    prompt: s.prompt,
+    enabled: !!s.enabled,
+    last_run: s.last_run ?? orUndef(s.last_run_at),
+    next_run: orUndef(s.next_run),
+  };
+}
+
+// ---------------------------------------------------------------- stats
 
 export async function getOverviewStats(): Promise<OverviewStats> {
-  if (isMock) {
-    const pendingCount = stateApprovals.filter((a) => a.status === "pending").length;
-    const runningCount = Object.values(stateRuns).filter((r) =>
-      ["planning", "executing", "verifying"].includes(r.status)
-    ).length;
-    return {
-      ...MOCK_OVERVIEW_STATS,
-      waiting_approval: pendingCount,
-      running_now: runningCount,
-    };
-  }
-  const res = await fetch(`${API_BASE}/stats/overview`);
-  return res.json();
+  const s = await apiFetch<Raw>("/stats/overview");
+  return {
+    running_now: s.running_now ?? s.running ?? 0,
+    waiting_approval: s.waiting_approval ?? 0,
+    succeeded_24h: s.succeeded_24h ?? 0,
+    failed_24h: s.failed_24h ?? 0,
+    spend_today_usd: s.spend_today_usd ?? 0,
+  };
 }
+
+// ---------------------------------------------------------------- tasks
 
 export async function getTasks(filters?: {
   status?: string;
   agent?: string;
   source?: string;
   q?: string;
+  from?: string;
+  to?: string;
 }): Promise<Task[]> {
-  if (isMock) {
-    let result = [...stateTasks];
-    if (filters?.status) {
-      result = result.filter((t) => t.status === filters.status);
-    }
-    if (filters?.agent) {
-      result = result.filter((t) => t.agent === filters.agent);
-    }
-    if (filters?.source) {
-      result = result.filter((t) => t.source === filters.source);
-    }
-    if (filters?.q) {
-      const q = filters.q.toLowerCase();
-      result = result.filter((t) => t.title.toLowerCase().includes(q) || t.prompt.toLowerCase().includes(q));
-    }
-    return result;
+  const items = await listAll("/tasks", { ...filters });
+  return items.map(mapTask);
+}
+
+export async function getTask(id: string): Promise<{ task: Task; runs: Run[] } | null> {
+  try {
+    const res = await apiFetch<Raw>(`/tasks/${enc(id)}`);
+    return { task: mapTask(res.task), runs: (res.runs ?? []).map(mapRun) };
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
   }
-  const params = new URLSearchParams();
-  if (filters?.status) params.set("status", filters.status);
-  if (filters?.agent) params.set("agent", filters.agent);
-  if (filters?.source) params.set("source", filters.source);
-  if (filters?.q) params.set("q", filters.q);
-  const res = await fetch(`${API_BASE}/tasks?${params.toString()}`);
-  const data = await res.json();
-  return data.items || data;
 }
 
 export async function createTask(payload: {
-  title: string;
+  title?: string;
   prompt: string;
   agent: string;
   notify_level: "final_only" | "milestones" | "everything";
-  budget?: { max_usd?: number; max_steps?: number };
-  criteria?: { description: string; type: string }[];
+  budget?: { max_usd?: number; max_steps?: number; max_minutes?: number };
+  criteria?: Record<string, unknown>[];
 }): Promise<{ task: Task; run: Run }> {
-  if (isMock) {
-    const taskId = `task-${Date.now().toString().slice(-4)}`;
-    const runId = `run-${Date.now().toString().slice(-4)}`;
-    const newTask: Task = {
-      id: taskId,
-      title: payload.title,
-      prompt: payload.prompt,
-      source: "api",
-      agent: payload.agent,
-      status: "planning",
-      attempts: 1,
-      notify_level: payload.notify_level,
-      budget: payload.budget || { max_usd: 1.0, max_steps: 25 },
-      created_at: new Date().toISOString(),
-      checks_total: payload.criteria?.length || 2,
-      checks_passed: 0,
-      cost_usd: 0.0,
-    };
-    const newRun: Run = {
-      id: runId,
-      task_id: taskId,
-      attempt: 1,
-      status: "planning",
-      agent: payload.agent,
-      model_profile: "groq-llama-3.3-70b",
-      current_step: "Initializing TaskSpec and acceptance criteria",
-      tokens_in: 0,
-      tokens_out: 0,
-      cost_usd: 0.0,
-      started_at: new Date().toISOString(),
-      checks_total: newTask.checks_total || 2,
-      checks_passed: 0,
-    };
-    stateTasks.unshift(newTask);
-    stateRuns[runId] = newRun;
-    stateRunEvents[runId] = [
-      {
-        id: `ev-${Date.now()}`,
-        run_id: runId,
-        seq: 1,
-        created_at: new Date().toISOString(),
-        type: "run.started",
-        payload: { task_id: taskId, attempt: 1, agent: payload.agent },
-      },
-    ];
-    return { task: newTask, run: newRun };
-  }
-
-  const res = await fetch(`${API_BASE}/tasks`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return res.json();
+  const res = await apiFetch<Raw>("/tasks", post(payload));
+  return { task: mapTask(res.task), run: mapRun(res.run) };
 }
 
+export async function retryTask(taskId: string): Promise<{ task: Task; run: Run }> {
+  const res = await apiFetch<Raw>(`/tasks/${enc(taskId)}/retry`, post());
+  const detail = await getTask(taskId);
+  return { task: detail!.task, run: mapRun(res.run) };
+}
+
+// ---------------------------------------------------------------- runs
+
+export async function getRuns(filters?: { status?: string; task_id?: string }): Promise<Run[]> {
+  return (await listAll("/runs", { ...filters })).map(mapRun);
+}
+
+const LIVE = new Set(["planning", "executing", "verifying", "waiting_approval"]);
+
 export async function getLiveRuns(): Promise<Run[]> {
-  if (isMock) {
-    return Object.values(stateRuns).filter((r) =>
-      ["planning", "executing", "verifying", "waiting_approval"].includes(r.status)
-    );
+  // The backend filters by a single status, so fetch recent runs and keep the live ones.
+  const res = await apiFetch<Paginated<Raw>>(`/runs${qs({ limit: 200 })}`);
+  return res.items.map(mapRun).filter((r) => LIVE.has(r.status));
+}
+
+async function getRunDetail(id: string): Promise<Raw | null> {
+  try {
+    return await apiFetch<Raw>(`/runs/${enc(id)}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
   }
-  const res = await fetch(`${API_BASE}/runs?status=running`);
-  const data = await res.json();
-  return data.items || data;
 }
 
 export async function getRun(id: string): Promise<Run | null> {
-  if (isMock) {
-    return stateRuns[id] || null;
-  }
-  const res = await fetch(`${API_BASE}/runs/${id}`);
-  if (!res.ok) return null;
-  return res.json();
+  const d = await getRunDetail(id);
+  return d ? mapRun(d.run) : null;
 }
 
 export async function getRunCriteriaAndVerdicts(runId: string): Promise<{
   criteria: Criterion[];
   verdicts: Verdict[];
 }> {
-  if (isMock) {
-    return (
-      stateCriteriaVerdicts[runId] ||
-      stateCriteriaVerdicts["run-102"] || { criteria: [], verdicts: [] }
-    );
-  }
-  const res = await fetch(`${API_BASE}/runs/${runId}`);
-  const data = await res.json();
-  return { criteria: data.criteria || [], verdicts: data.verdicts || [] };
-}
-
-export async function getRunEvents(runId: string, afterSeq = 0): Promise<RunEvent[]> {
-  if (isMock) {
-    const events = stateRunEvents[runId] || stateRunEvents["run-102"] || [];
-    return events.filter((e) => e.seq > afterSeq);
-  }
-  const res = await fetch(`${API_BASE}/runs/${runId}/events?after_seq=${afterSeq}`);
-  return res.json();
+  const d = await getRunDetail(runId);
+  return {
+    criteria: (d?.spec?.criteria ?? []) as Criterion[],
+    verdicts: (d?.verdicts ?? []).map(mapVerdict),
+  };
 }
 
 export async function getRunArtifacts(runId: string): Promise<Artifact[]> {
-  if (isMock) {
-    return MOCK_ARTIFACTS[runId] || MOCK_ARTIFACTS["run-102"] || [];
-  }
-  const res = await fetch(`${API_BASE}/runs/${runId}`);
-  const data = await res.json();
-  return data.artifacts || [];
+  const d = await getRunDetail(runId);
+  return (d?.artifacts ?? []).map(mapArtifact);
 }
 
-export async function getApprovals(status?: "pending" | "approved" | "rejected"): Promise<Approval[]> {
-  if (isMock) {
-    if (status) {
-      return stateApprovals.filter((a) => a.status === status);
-    }
-    return [...stateApprovals];
+export async function getRunEvents(runId: string, afterSeq = 0): Promise<RunEvent[]> {
+  const out: RunEvent[] = [];
+  let after = afterSeq;
+  for (let i = 0; i < 20; i++) {
+    const res = await apiFetch<Paginated<RunEvent>>(`/runs/${enc(runId)}/events${qs({ after_seq: after, limit: 500 })}`);
+    out.push(...res.items);
+    if (!res.next_cursor) break;
+    after = Number(res.next_cursor);
   }
-  const q = status ? `?status=${status}` : "";
-  const res = await fetch(`${API_BASE}/approvals${q}`);
-  return res.json();
-}
-
-export async function decideApproval(
-  id: string,
-  decision: "approve" | "reject",
-  note?: string
-): Promise<Approval> {
-  if (isMock) {
-    const idx = stateApprovals.findIndex((a) => a.id === id);
-    if (idx !== -1) {
-      const updated: Approval = {
-        ...stateApprovals[idx],
-        status: decision === "approve" ? "approved" : "rejected",
-        decided_by: "@operator (Dashboard)",
-        decided_at: new Date().toISOString(),
-        note: note || undefined,
-      };
-      stateApprovals[idx] = updated;
-
-      // Update corresponding run status if waiting
-      const run = Object.values(stateRuns).find((r) => r.id === updated.run_id);
-      if (run && run.status === "waiting_approval") {
-        run.status = decision === "approve" ? "executing" : "stopped";
-        run.current_step =
-          decision === "approve"
-            ? "Approval granted: proceeding to next action"
-            : "Approval rejected: run stopped by operator";
-      }
-
-      return updated;
-    }
-    throw new Error("Approval not found");
-  }
-
-  const res = await fetch(`${API_BASE}/approvals/${id}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ decision, note }),
-  });
-  return res.json();
+  return out;
 }
 
 export async function stopRun(runId: string): Promise<{ success: boolean }> {
-  if (isMock) {
-    if (stateRuns[runId]) {
-      stateRuns[runId].status = "stopped";
-      stateRuns[runId].current_step = "Manually stopped by operator via Dashboard";
-    }
-    return { success: true };
-  }
-  const res = await fetch(`${API_BASE}/runs/${runId}/stop`, { method: "POST" });
-  return res.json();
+  await apiFetch(`/runs/${enc(runId)}/stop`, post());
+  return { success: true };
 }
 
-export async function retryTask(taskId: string): Promise<{ task: Task; run: Run }> {
-  if (isMock) {
-    const task = stateTasks.find((t) => t.id === taskId);
-    if (task) {
-      task.attempts += 1;
-      task.status = "executing";
-      const newRunId = `run-${Date.now().toString().slice(-4)}`;
-      const newRun: Run = {
-        id: newRunId,
-        task_id: taskId,
-        attempt: task.attempts,
-        status: "executing",
-        agent: task.agent,
-        model_profile: "groq-llama-3.3-70b",
-        current_step: `Attempt ${task.attempts}: re-executing with prior failure feedback`,
-        tokens_in: 0,
-        tokens_out: 0,
-        cost_usd: 0.0,
-        started_at: new Date().toISOString(),
-        checks_total: task.checks_total || 3,
-        checks_passed: 0,
-      };
-      stateRuns[newRunId] = newRun;
-      return { task, run: newRun };
-    }
-    throw new Error("Task not found");
-  }
-  const res = await fetch(`${API_BASE}/tasks/${taskId}/retry`, { method: "POST" });
-  return res.json();
+/** Global activity feed history (live updates: useEventStream("/stream")). */
+export async function getEvents(filters?: EventFilters): Promise<RunEvent[]> {
+  const res = await apiFetch<Paginated<RunEvent>>(`/events${qs({ limit: 100, ...filters })}`);
+  return res.items;
 }
+
+// ---------------------------------------------------------------- approvals
+
+export async function getApprovals(status?: "pending" | "approved" | "rejected"): Promise<Approval[]> {
+  return (await listAll("/approvals", { status })).map(mapApproval);
+}
+
+export async function decideApproval(id: string, decision: "approve" | "reject", note?: string): Promise<Approval> {
+  return mapApproval(await apiFetch<Raw>(`/approvals/${enc(id)}`, post({ decision, note })));
+}
+
+// ---------------------------------------------------------------- agents
 
 export async function getAgents(): Promise<AgentDefinition[]> {
-  if (isMock) {
-    return [...stateAgents];
-  }
-  const res = await fetch(`${API_BASE}/agents`);
-  return res.json();
+  return (await listAll("/agents")).map(mapAgent);
 }
 
 export async function getAgent(name: string): Promise<AgentDefinition | null> {
-  if (isMock) {
-    return stateAgents.find((a) => a.name === name || a.id === name) || null;
+  try {
+    const [raw, versions] = await Promise.all([
+      apiFetch<Raw>(`/agents/${enc(name)}`),
+      apiFetch<Paginated<Raw>>(`/agents/${enc(name)}/versions`).catch(() => null),
+    ]);
+    const agent = mapAgent(raw);
+    if (versions && !agent.versions) {
+      agent.versions = versions.items.map((v) => ({
+        version: v.version,
+        updated_at: v.updated_at ?? "",
+        author: v.author ?? v.source ?? "",
+      }));
+    }
+    return agent;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
   }
-  const res = await fetch(`${API_BASE}/agents/${name}`);
-  if (!res.ok) return null;
-  return res.json();
 }
 
-export async function updateAgent(
-  name: string,
-  payload: Partial<AgentDefinition>
-): Promise<AgentDefinition> {
-  if (isMock) {
-    const idx = stateAgents.findIndex((a) => a.name === name || a.id === name);
-    if (idx !== -1) {
-      stateAgents[idx] = { ...stateAgents[idx], ...payload };
-      return stateAgents[idx];
-    }
-    throw new Error("Agent not found");
-  }
-  const res = await fetch(`${API_BASE}/agents/${name}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return res.json();
+export async function updateAgent(name: string, payload: Partial<AgentDefinition>): Promise<AgentDefinition> {
+  return mapAgent(await apiFetch<Raw>(`/agents/${enc(name)}`, put(payload)));
 }
+
+export async function createAgent(payload: Partial<AgentDefinition> & { name: string }): Promise<AgentDefinition> {
+  return mapAgent(await apiFetch<Raw>("/agents", post(payload)));
+}
+
+// ---------------------------------------------------------------- models, router, usage
 
 export async function getModelProfiles(capability?: string): Promise<ModelProfile[]> {
-  if (isMock) {
-    if (capability && capability !== "all") {
-      return MOCK_MODEL_PROFILES.filter((m) => m.capability === capability);
-    }
-    return [...MOCK_MODEL_PROFILES];
-  }
-  const q = capability ? `?capability=${capability}` : "";
-  const res = await fetch(`${API_BASE}/model-profiles${q}`);
-  return res.json();
+  return (await listAll("/model-profiles", { capability })).map(mapProfile);
+}
+
+export async function createModelProfile(payload: Partial<ModelProfile> & { name: string }): Promise<ModelProfile> {
+  return mapProfile(await apiFetch<Raw>("/model-profiles", post(payload)));
+}
+
+export async function updateModelProfile(id: string, payload: Partial<ModelProfile>): Promise<ModelProfile> {
+  return mapProfile(await apiFetch<Raw>(`/model-profiles/${enc(id)}`, put(payload)));
+}
+
+export async function deleteModelProfile(id: string): Promise<void> {
+  await apiFetch<void>(`/model-profiles/${enc(id)}`, { method: "DELETE" });
 }
 
 export async function getRouterPreview(
   capability: string,
-  prefer: "cheap" | "fast" | "smart"
+  prefer: "cheap" | "fast" | "smart",
 ): Promise<{ profile: ModelProfile; reason: string }> {
-  if (isMock) {
-    const candidates = MOCK_MODEL_PROFILES.filter(
-      (m) => m.capability === capability && m.key_configured && m.enabled
-    );
-    if (prefer === "cheap") {
-      const match =
-        candidates.find((c) => c.tags.includes("cheap")) || candidates[0] || MOCK_MODEL_PROFILES[0];
-      return {
-        profile: match,
-        reason: `Selected profile '${match.name}' because it offers the lowest input/output cost per Mtok in the '${capability}' category.`,
-      };
-    }
-    if (prefer === "fast") {
-      const match =
-        candidates.find((c) => c.tags.includes("fast")) || candidates[0] || MOCK_MODEL_PROFILES[0];
-      return {
-        profile: match,
-        reason: `Selected profile '${match.name}' due to sub-400ms average round-trip latency on Groq hardware.`,
-      };
-    }
-    const match =
-      candidates.find((c) => c.tags.includes("smart") || c.tags.includes("high-reasoning")) ||
-      candidates[0] ||
-      MOCK_MODEL_PROFILES[1];
-    return {
-      profile: match,
-      reason: `Selected profile '${match.name}' for maximum reasoning depth, complex tool calling, and verifier independence.`,
-    };
-  }
-
-  const res = await fetch(`${API_BASE}/router/preview?capability=${capability}&prefer=${prefer}`);
-  return res.json();
+  const res = await apiFetch<Raw>(`/router/preview${qs({ capability, prefer })}`);
+  // `profile` is null when no enabled profile has a key; kept in the type for callers that handle it.
+  return { profile: res.profile ? mapProfile(res.profile) : (null as unknown as ModelProfile), reason: res.reason };
 }
 
-export async function getUsageRecords(): Promise<UsageRecord[]> {
-  if (isMock) {
-    return [...MOCK_USAGE_RECORDS];
-  }
-  const res = await fetch(`${API_BASE}/usage`);
-  return res.json();
+/** Same call as getRouterPreview but with the honest nullable return type. */
+export async function previewRoute(capability: string, prefer: "cheap" | "fast" | "smart"): Promise<RouterPreview> {
+  const res = await getRouterPreview(capability, prefer);
+  return { profile: res.profile ?? null, reason: res.reason };
 }
+
+export async function getUsageRecords(filters?: UsageFilters): Promise<UsageRecord[]> {
+  return listAll<UsageRecord>("/usage", { ...filters });
+}
+
+export async function getUsageSummary(filters?: UsageFilters & { group_by?: UsageGroupBy }): Promise<UsageSummary> {
+  const { agent, capability, provider, ...rest } = filters ?? {};
+  void agent; void capability; void provider; // the summary endpoint only filters by date range
+  return apiFetch<UsageSummary>(`/usage/summary${qs({ group_by: "provider", ...rest })}`);
+}
+
+// ---------------------------------------------------------------- extensions
 
 export async function getExtensions(kind?: "skill" | "mcp" | "plugin"): Promise<Extension[]> {
-  if (isMock) {
-    if (kind) {
-      return MOCK_EXTENSIONS.filter((e) => e.kind === kind);
-    }
-    return [...MOCK_EXTENSIONS];
-  }
-  const q = kind ? `?kind=${kind}` : "";
-  const res = await fetch(`${API_BASE}/extensions${q}`);
-  return res.json();
+  return (await listAll("/extensions", { kind })).map(mapExtension);
+}
+
+export async function getExtension(id: string): Promise<Extension> {
+  return mapExtension(await apiFetch<Raw>(`/extensions/${enc(id)}`));
+}
+
+export async function updateExtension(id: string, payload: { enabled: boolean }): Promise<Extension> {
+  return mapExtension(await apiFetch<Raw>(`/extensions/${enc(id)}`, put(payload)));
+}
+
+export async function testExtension(id: string): Promise<ExtensionTestResult> {
+  return apiFetch<ExtensionTestResult>(`/extensions/${enc(id)}/test`, post());
 }
 
 export async function testMcpConnection(id: string): Promise<{ success: boolean; latency_ms: number; message: string }> {
-  if (isMock) {
-    await new Promise((r) => setTimeout(r, 600));
-    return {
-      success: true,
-      latency_ms: 42,
-      message: "Connected cleanly. 4 MCP tools discovered and registered.",
-    };
-  }
-  const res = await fetch(`${API_BASE}/extensions/${id}/test`, { method: "POST" });
-  return res.json();
+  const started = performance.now();
+  const r = await testExtension(id);
+  return {
+    success: r.ok,
+    latency_ms: Math.round(performance.now() - started),
+    message: r.ok ? `Connected. ${r.tools.length} tool(s) discovered.` : (r.error ?? "Connection failed"),
+  };
 }
 
-export async function getMemoryDocs(scope?: string, search?: string): Promise<MemoryDoc[]> {
-  if (isMock) {
-    let docs = [...MOCK_MEMORY_DOCS];
-    if (scope && scope !== "all") {
-      docs = docs.filter((d) => d.scope === scope);
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      docs = docs.filter((d) => d.path.toLowerCase().includes(q) || d.content.toLowerCase().includes(q));
-    }
-    return docs;
-  }
-  const params = new URLSearchParams();
-  if (scope) params.set("scope", scope);
-  if (search) params.set("q", search);
-  const res = await fetch(`${API_BASE}/memory?${params.toString()}`);
-  return res.json();
+// ---------------------------------------------------------------- secrets (values are write-only)
+
+export async function getSecrets(): Promise<SecretItem[]> {
+  return listAll<SecretItem>("/secrets");
 }
+
+/** Store or replace a key. The value is only ever in this request body; callers must clear their input. */
+export async function setSecret(name: string, value: string): Promise<void> {
+  await apiFetch(`/secrets/${enc(name)}`, put({ value }));
+}
+
+export async function deleteSecret(name: string): Promise<void> {
+  await apiFetch(`/secrets/${enc(name)}`, { method: "DELETE" });
+}
+
+export async function testSecret(name: string): Promise<SecretTestResult> {
+  return apiFetch<SecretTestResult>(`/secrets/${enc(name)}/test`, post());
+}
+
+// ---------------------------------------------------------------- memory (temporal facts)
+
+export async function getMemoryFacts(opts?: {
+  scope?: string;
+  scope_id?: string;
+  include_expired?: boolean;
+}): Promise<MemoryFact[]> {
+  return listAll<MemoryFact>("/memory", { ...opts });
+}
+
+export async function searchMemory(q: string): Promise<MemoryFact[]> {
+  const res = await apiFetch<Paginated<MemoryFact>>(`/memory/search${qs({ q })}`);
+  return res.items;
+}
+
+export async function getMemoryFact(id: string): Promise<MemoryFact> {
+  return apiFetch<MemoryFact>(`/memory/${enc(id)}`);
+}
+
+/** Supersedes the fact: the old one is expired and the returned new fact replaces it. */
+export async function editMemoryFact(id: string, content: string): Promise<MemoryFact> {
+  return apiFetch<MemoryFact>(`/memory/${enc(id)}`, put({ content }));
+}
+
+/** Expires the fact (never hard-deleted). */
+export async function forgetMemoryFact(id: string): Promise<void> {
+  await apiFetch<void>(`/memory/${enc(id)}`, { method: "DELETE" });
+}
+
+export async function getMemoryRevisions(id: string): Promise<MemoryFact[]> {
+  const res = await apiFetch<Paginated<MemoryFact>>(`/memory/${enc(id)}/revisions`);
+  return res.items;
+}
+
+/** Legacy document view of facts for the current memory page. */
+export async function getMemoryDocs(scope?: string, search?: string): Promise<MemoryDoc[]> {
+  const facts = search ? await searchMemory(search) : await getMemoryFacts({ scope });
+  return facts
+    .filter((f) => !scope || scope === "all" || f.scope === scope)
+    .map((f) => ({
+      id: f.id,
+      scope: f.scope,
+      scope_id: f.scope_id ?? undefined,
+      path: f.source_id || `${f.scope}${f.scope_id ? `/${f.scope_id}` : ""}/${f.id}`,
+      content: f.content,
+      revision: 1,
+      updated_at: f.valid_from,
+    }));
+}
+
+// ---------------------------------------------------------------- schedules
 
 export async function getSchedules(): Promise<Schedule[]> {
-  if (isMock) {
-    return [...stateSchedules];
-  }
-  const res = await fetch(`${API_BASE}/schedules`);
-  return res.json();
+  return (await listAll("/schedules")).map(mapSchedule);
+}
+
+export async function createSchedule(payload: ScheduleInput): Promise<Schedule> {
+  return mapSchedule(await apiFetch<Raw>("/schedules", post(payload)));
+}
+
+export async function updateSchedule(id: string, payload: ScheduleInput): Promise<Schedule> {
+  return mapSchedule(await apiFetch<Raw>(`/schedules/${enc(id)}`, put(payload)));
+}
+
+export async function deleteSchedule(id: string): Promise<void> {
+  await apiFetch<void>(`/schedules/${enc(id)}`, { method: "DELETE" });
 }
 
 export async function toggleSchedule(id: string): Promise<Schedule> {
-  if (isMock) {
-    const s = stateSchedules.find((item) => item.id === id);
-    if (s) {
-      s.enabled = !s.enabled;
-      return { ...s };
-    }
-    throw new Error("Schedule not found");
-  }
-  const res = await fetch(`${API_BASE}/schedules/${id}/toggle`, { method: "POST" });
-  return res.json();
+  const current = (await getSchedules()).find((s) => s.id === id);
+  if (!current) throw new ApiError(404, "not_found", `schedule ${id} not found`);
+  return updateSchedule(id, {
+    agent: current.agent,
+    cron: current.cron,
+    prompt: current.prompt,
+    enabled: !current.enabled,
+  });
 }
+
+// ---------------------------------------------------------------- live streams
 
 /**
- * Live SSE subscription with Last-Event-ID reconnection per spec §7.
- * In mock mode, simulates real-time stream with simulated events.
+ * Subscribe to a run's event stream. Thin wrapper over the shared SSE client in lib/sse.ts
+ * (reconnect with backoff, Last-Event-ID resume, dedupe by run_id + seq). Returns an unsubscribe fn.
  */
-export function subscribeToRunStream(
-  runId: string,
-  onEvent: (event: RunEvent) => void,
-  onError?: (err: unknown) => void
-): () => void {
-  if (isMock) {
-    // Deliver existing events first
-    const existing = stateRunEvents[runId] || stateRunEvents["run-102"] || [];
-    existing.forEach((ev, idx) => {
-      setTimeout(() => onEvent(ev), idx * 40);
-    });
-
-    let currentSeq = existing.length;
-    // Simulate periodic live heartbeat/activity
-    const interval = setInterval(() => {
-      if (Math.random() > 0.6) {
-        currentSeq++;
-        const simulatedEvent: RunEvent = {
-          id: `ev-sim-${Date.now()}`,
-          run_id: runId,
-          seq: currentSeq,
-          created_at: new Date().toISOString(),
-          type: "model.call",
-          payload: {
-            provider: "Groq",
-            model: "llama-3.3-70b-versatile",
-            tokens_in: 320,
-            tokens_out: 85,
-            cost_usd: 0.00012,
-            latency_ms: 290,
-            simulated: true,
-            messages_preview: "Heartbeat stream check: agent status nominal.",
-          },
-        };
-        onEvent(simulatedEvent);
-      }
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }
-
-  // Real backend SSE stream
-  let eventSource: EventSource | null = null;
-  let lastEventId = "";
-
-  const connect = () => {
-    const url = `${API_BASE}/runs/${runId}/stream`;
-    eventSource = new EventSource(url);
-
-    eventSource.onmessage = (e) => {
-      try {
-        lastEventId = e.lastEventId || lastEventId;
-        const parsed = JSON.parse(e.data) as RunEvent;
-        onEvent(parsed);
-      } catch (err) {
-        onError?.(err);
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      onError?.(err);
-      eventSource?.close();
-      // Reconnect after 3 seconds with Last-Event-ID
-      setTimeout(() => connect(), 3000);
-    };
-  };
-
-  connect();
-
-  return () => {
-    eventSource?.close();
-  };
-}
+export { subscribeToRunStream } from "./sse";
