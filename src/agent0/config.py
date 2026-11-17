@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="AGENT0_", extra="ignore")
 
     env: Literal["local", "cloud"] = "local"
-    database_url: str = "postgresql://agent0:agent0@localhost:5432/agent0"
+    database_url: str = "postgresql://agent0:agent0@localhost:5433/agent0"
     orchestrator: Literal["local", "temporal"] = "local"
     temporal_address: str = "localhost:7233"
     temporal_namespace: str = "default"
