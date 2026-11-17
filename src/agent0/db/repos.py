@@ -366,6 +366,16 @@ class UsageRepo(_Repo):
             ),
         )
 
+    async def list(
+        self, since: datetime | None = None, until: datetime | None = None, limit: int = 1000
+    ) -> list[Row]:
+        return await self._all(
+            "SELECT u.*, r.agent FROM usage u LEFT JOIN runs r ON r.id = u.run_id"
+            " WHERE (%s::timestamptz IS NULL OR u.created_at >= %s)"
+            " AND (%s::timestamptz IS NULL OR u.created_at < %s) ORDER BY u.id DESC LIMIT %s",
+            (since, since, until, until, limit),
+        )
+
     async def summary(
         self,
         group_by: Sequence[str] = ("provider", "capability", "agent", "day"),
