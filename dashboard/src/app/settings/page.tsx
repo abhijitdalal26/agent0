@@ -1,148 +1,119 @@
 "use client";
 
-import { useState } from "react";
-import { Settings, MessageSquare, Shield, DollarSign, Bell, Check, Save } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { Settings, MessageSquare, DollarSign, Bell, KeyRound, ChevronRight } from "lucide-react";
+import { errMessage, listSecrets, TELEGRAM_SECRET, type SecretItem } from "@/lib/api-settings";
+import { Badge, ErrorBox, Loading } from "@/components/new/ui";
+
+const LEVELS = [
+  { id: "final_only", title: "Final only", desc: "Notify when a task reaches succeeded or failed." },
+  { id: "milestones", title: "Milestones", desc: "Also notify on approvals, verifier verdicts and failures. This is the default." },
+  { id: "everything", title: "Everything", desc: "Notify on every step." },
+];
+
+const card = "rounded-xl border border-border bg-card/60 p-4 sm:p-5 space-y-3";
+const h2 = "text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2";
 
 export default function SettingsPage() {
-  const [dailyCap, setDailyCap] = useState("25.00");
-  const [notifyLevel, setNotifyLevel] = useState("milestones");
-  const [saved, setSaved] = useState(false);
+  const [telegram, setTelegram] = useState<SecretItem | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const s = await listSecrets();
+      setTelegram(s.items.find((i) => i.name === TELEGRAM_SECRET) ?? null);
+    } catch (e) {
+      setError(errMessage(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <div className="space-y-6 max-w-4xl">
-      {/* Header */}
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <Settings className="w-5 h-5 text-blue-500" />
-          <span>Platform Settings & Channel Gateway</span>
+          <span>Settings</span>
         </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Configure notification dispatch channels, operator allowlists, and global budget caps.
-        </p>
+        <p className="text-xs sm:text-sm text-muted-foreground">Channels, notification defaults and credentials.</p>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Connected Channels */}
-        <div className="rounded-xl border border-border bg-card/60 p-5 space-y-4">
-          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-blue-500" />
-            <span>Connected Communication Channels</span>
-          </h2>
+      <Link
+        href="/settings/keys"
+        className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/60 p-4 hover:bg-secondary/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <KeyRound className="w-5 h-5 text-blue-500" />
+          <div>
+            <div className="text-sm font-semibold text-foreground">API keys</div>
+            <div className="text-xs text-muted-foreground">Set, test and remove provider and channel credentials.</div>
+          </div>
+        </div>
+        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+      </Link>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Telegram */}
-            <div className="p-4 rounded-lg border border-border bg-card space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs text-foreground">Telegram Bot</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
-                  Online & Polling
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Listening for /task, /status, and routing inline Approve/Reject action buttons.
+      <section className={card}>
+        <h2 className={h2}>
+          <MessageSquare className="w-4 h-4 text-blue-500" /> Channels
+        </h2>
+        {error && <ErrorBox message={error} onRetry={load} />}
+        {telegram === undefined && !error && <Loading />}
+        {telegram !== undefined && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border border-border bg-card">
+            <div>
+              <div className="text-xs font-semibold text-foreground">Telegram bot</div>
+              <p className="text-[11px] text-muted-foreground">
+                {telegram?.configured
+                  ? `Token ${telegram.source === "env" ? "comes from the server environment" : "is stored"}. The bot starts when the server runs with Telegram enabled.`
+                  : "No bot token. Add one under API keys to enable /task, /status and inline approvals."}
               </p>
-              <div className="text-[11px] font-mono text-muted-foreground">
-                Bot Username: <strong className="text-foreground">@Agent0HarnessBot</strong>
-              </div>
             </div>
+            {telegram?.configured ? <Badge tone="ok">configured</Badge> : <Badge tone="warn">not configured</Badge>}
+          </div>
+        )}
+        <p className="text-[11px] text-muted-foreground">
+          Status reflects whether a token is present. The dashboard cannot see whether the bot process is currently polling.
+        </p>
+      </section>
 
-            {/* Slack */}
-            <div className="p-4 rounded-lg border border-border bg-card space-y-2 opacity-60">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs text-foreground">Slack App</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-muted text-muted-foreground">
-                  Planned (Phase 4)
-                </span>
+      <section className={card}>
+        <h2 className={h2}>
+          <Bell className="w-4 h-4 text-purple-400" /> Default notify level
+        </h2>
+        <ul className="space-y-2">
+          {LEVELS.map((l) => (
+            <li key={l.id} className={`p-3 rounded-lg border text-xs ${l.id === "milestones" ? "border-blue-500/40 bg-blue-500/5" : "border-border"}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-foreground">{l.title}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">{l.id}</span>
+                {l.id === "milestones" && <Badge tone="info">default</Badge>}
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Slack-bolt integration for channel task creation and ephemeral approval prompts.
-              </p>
-              <div className="text-[11px] font-mono text-muted-foreground">
-                Status: Not configured
-              </div>
-            </div>
-          </div>
-        </div>
+              <p className="text-[11px] text-muted-foreground">{l.desc}</p>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[11px] text-muted-foreground">
+          Read-only. The level is chosen per task when it is created; the server has no endpoint to change a global default.
+        </p>
+      </section>
 
-        {/* Global Budgets */}
-        <div className="rounded-xl border border-border bg-card/60 p-5 space-y-4">
-          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-emerald-500" />
-            <span>Global Spend Caps & Guardrails</span>
-          </h2>
-
-          <div className="max-w-md space-y-2">
-            <label className="text-xs font-medium text-foreground block">
-              Daily Hard Spend Cap (USD)
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-mono">
-                $
-              </span>
-              <input
-                type="number"
-                step="5.00"
-                value={dailyCap}
-                onChange={(e) => setDailyCap(e.target.value)}
-                className="w-full text-xs font-mono pl-7 pr-3 py-2 rounded-lg border border-input bg-background text-foreground"
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              Runs will automatically pause and emit a <code>budget.exceeded</code> alert when daily consumption reaches this threshold.
-            </p>
-          </div>
-        </div>
-
-        {/* Notification Defaults */}
-        <div className="rounded-xl border border-border bg-card/60 p-5 space-y-4">
-          <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-            <Bell className="w-4 h-4 text-purple-400" />
-            <span>Default Notification Level</span>
-          </h2>
-
-          <div className="space-y-2">
-            {[
-              { id: "milestones", title: "Milestones Only", desc: "Notify on start, human approvals, verifier verdicts, and failures." },
-              { id: "everything", title: "Everything", desc: "Notify on every tool call and model completion." },
-              { id: "final_only", title: "Final Result Only", desc: "Only notify when the entire task reaches Succeeded or Failed." },
-            ].map((opt) => (
-              <label
-                key={opt.id}
-                className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-secondary/40 cursor-pointer text-xs"
-              >
-                <input
-                  type="radio"
-                  name="notifyLevel"
-                  checked={notifyLevel === opt.id}
-                  onChange={() => setNotifyLevel(opt.id)}
-                  className="mt-0.5 text-blue-600"
-                />
-                <div>
-                  <span className="font-semibold text-foreground">{opt.title}</span>
-                  <p className="text-muted-foreground text-[11px]">{opt.desc}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {/* Submit */}
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm shadow-blue-500/30 transition-all"
-          >
-            {saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-            <span>{saved ? "Settings Saved" : "Save Changes"}</span>
-          </button>
-        </div>
-      </form>
+      <section className={card}>
+        <h2 className={h2}>
+          <DollarSign className="w-4 h-4 text-emerald-500" /> Daily budget
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          The daily spend cap is configured on the server, not from the dashboard. Current consumption against the cap is on the{" "}
+          <Link href="/usage" className="underline text-foreground">
+            Usage
+          </Link>{" "}
+          page.
+        </p>
+      </section>
     </div>
   );
 }
