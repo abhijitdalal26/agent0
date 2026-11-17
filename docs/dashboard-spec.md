@@ -47,9 +47,24 @@ Primary user: the operator (single user in v1, design so a small team works late
 - List: name, model profile, tool count, runs (7d), success rate, avg cost.
 - Detail: instructions (markdown view + edit), model profile select, tools with permission level (safe / needs approval / forbidden), budgets. Save → `PUT /agents/{name}` (creates a new version; show version history).
 
-### 3.6 Models `/models`
-- Model profiles: name, provider, model, fallbacks, and status of the provider key (configured or missing; **never show key values**). Add/edit profile.
-- Per-profile stats: runs, pass rate, avg cost, avg latency (from evals + real runs).
+### 3.6 Models & providers `/models`
+- Grouped by **capability** tabs: Chat · Vision · Image · Voice (TTS) · Speech-to-text · Embeddings.
+- Each profile row: name, provider (logo-free text badge), model, tags (cheap/fast/smart), cost, key status (configured / missing; **never show key values**), enabled toggle.
+- Router preview: pick a capability + preference → shows which profile the router would choose and why.
+- Per-profile stats: calls, pass rate, avg cost, avg latency, error rate (7d).
+- Add/edit profile form (provider, model, capability, tags, cost, key env var name).
+
+### 3.6b Usage `/usage`
+- Spend over time (stacked by provider), calls by capability, top runs by cost, error rate by provider.
+- Filters: date range, provider, capability, agent.
+- Table of individual calls (from `usage`), linking to their run.
+
+### 3.6c Activity `/activity`
+- One live, global feed of every event across all runs (model calls, tool calls, checks, approvals, errors), filterable by type/agent/run. This is the "what is everything doing right now" view.
+
+### 3.6d Extensions `/extensions`
+- Tabs: **Skills** (name, description, source path, used-in-runs count, enabled) · **MCP servers** (name, transport, connection status, tool list, attached agents) · **Plugins** (name, what it bundles, enabled).
+- Skill detail shows the `SKILL.md` rendered. MCP detail shows tools and a "test connection" button.
 
 ### 3.7 Memory `/memory`
 - Tree by scope (global / agent / project) → markdown docs. View, edit, see revisions, delete. Search box (`GET /memory/search`).
@@ -91,11 +106,17 @@ Base: `/api/v1`. JSON. Errors: `{ "error": { "code": "string", "message": "strin
 | GET | `/approvals?status=pending` | Approvals |
 | POST | `/approvals/{id}` | `{ "decision": "approve"\|"reject", "note"?: string }` |
 | GET/POST | `/agents`, GET/PUT `/agents/{name}`, GET `/agents/{name}/versions` | Agents |
-| GET/POST | `/model-profiles`, PUT/DELETE `/model-profiles/{id}` | Model profiles |
+| GET/POST | `/model-profiles`, PUT/DELETE `/model-profiles/{id}` | Model profiles (`?capability=`) |
+| GET | `/router/preview?capability=&prefer=` | Which profile the router picks + reason |
+| GET | `/usage?from=&to=&provider=&capability=&agent=` | Individual model calls |
+| GET | `/usage/summary?from=&to=&group_by=provider\|capability\|agent\|day` | Aggregates for charts |
+| GET | `/events?type=&agent=&run_id=` | Global activity feed history (live via `/stream`) |
+| GET | `/extensions?kind=skill\|mcp\|plugin`, GET/PUT `/extensions/{id}` | Skills, MCP servers, plugins |
+| POST | `/extensions/{id}/test` | Test an MCP connection |
 | GET | `/memory?scope=&scope_id=`, GET `/memory/search?q=` | Memory list/search |
 | GET/PUT/DELETE | `/memory/{id}`, GET `/memory/{id}/revisions` | Memory doc |
 | GET/POST | `/schedules`, PUT/DELETE `/schedules/{id}` | Schedules |
-| GET | `/stream` | **SSE** global stream: run status changes + new approvals (powers Overview) |
+| GET | `/stream` | **SSE** global stream: every new event across runs (powers Overview + Activity) |
 
 ## 6. Core shapes
 
@@ -136,6 +157,7 @@ interface Verdict {
 interface RunEvent {
   id: string; run_id: string; seq: number; created_at: string;
   type: "run.started" | "plan.created" | "model.call" | "tool.call" | "tool.result"
+      | "skill.loaded" | "memory.recalled" | "memory.saved" | "knowledge.read"
       | "check.result" | "approval.requested" | "approval.decided"
       | "budget.exceeded" | "error" | "run.finished";
   payload: Record<string, unknown>;
@@ -147,9 +169,30 @@ interface Approval {
   decided_by?: string; decided_at?: string; note?: string;
 }
 
+type Capability = "chat" | "vision" | "image_gen" | "tts" | "stt" | "embedding";
+
+interface ModelProfile {
+  id: string; name: string; provider: string; model: string;
+  capability: Capability; tags: string[];
+  cost: { input_per_mtok?: number; output_per_mtok?: number; per_image?: number; per_1k_chars?: number };
+  key_configured: boolean; enabled: boolean;
+}
+
+interface UsageRecord {
+  id: string; run_id?: string; profile: string; provider: string; model: string;
+  capability: Capability; input_units: number; output_units: number;
+  cost_usd: number; latency_ms: number; ok: boolean; created_at: string;
+}
+
+interface Extension {
+  id: string; kind: "skill" | "mcp" | "plugin"; name: string; description: string;
+  enabled: boolean; status?: "connected" | "error" | "idle";
+  config: Record<string, unknown>;
+}
+
 interface Artifact {
   id: string; run_id: string; path: string;
-  kind: "image" | "text" | "markdown" | "json" | "pdf" | "video" | "other";
+  kind: "image" | "audio" | "text" | "markdown" | "json" | "pdf" | "video" | "other";
   size: number; url: string;
 }
 ```
@@ -162,3 +205,5 @@ interface Artifact {
 - [ ] No API key or secret ever appears in browser network requests or bundles.
 - [ ] Overview, Approvals, Run detail usable at 375px.
 - [ ] Light + dark mode.
+- [ ] Image and audio artifacts preview inline (audio player for TTS output).
+- [ ] Usage page totals match the sum of `usage` rows for the same filters.

@@ -1,0 +1,11 @@
+# Model IDs must be verified against provider docs; add any provider/capability here.
+profiles:
+  - {name: groq-fast, provider: groq, model: llama-3.1-8b-instant, capability: chat, tags: [cheap, fast], key_env: GROQ_API_KEY}
+  - {name: groq-smart, provider: groq, model: openai/gpt-oss-120b, capability: chat, tags: [smart, fast], key_env: GROQ_API_KEY}
+  - {name: gemini-flash, provider: google, model: gemini-2.5-flash, capability: chat, tags: [cheap, smart], key_env: GEMINI_API_KEY}
+  - {name: gemini-pro, provider: google, model: gemini-2.5-pro, capability: chat, tags: [smart], key_env: GEMINI_API_KEY}
+  - {name: gemini-vision, provider: google, model: gemini-2.5-flash, capability: vision, tags: [cheap], key_env: GEMINI_API_KEY}
+  - {name: gemini-image, provider: google, model: gemini-2.5-flash-image, capability: image_gen, tags: [cheap], key_env: GEMINI_API_KEY}
+  - {name: gemini-tts, provider: google, model: gemini-2.5-flash-preview-tts, capability: tts, tags: [cheap], key_env: GEMINI_API_KEY}
+  - {name: groq-stt, provider: groq, model: whisper-large-v3-turbo, capability: stt, tags: [cheap, fast], key_env: GROQ_API_KEY}
+  - {name: gemini-embed, provider: google, model: gemini-embedding-001, capability: embedding, tags: [cheap], key_env: GEMINI_API_KEY, settings: {dimensions: 768}}

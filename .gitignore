@@ -2,3 +2,8 @@ _reference/
 .env
 .venv/
 __pycache__/
+.agent0/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/

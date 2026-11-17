@@ -120,11 +120,13 @@ These wrap full coding agents (Claude Code, Codex). They aren't our loop, but th
 
 Each is a Python package under `harness/` with one job and a narrow interface.
 
-### 5.1 `models` — model profiles
-- A **model profile** = provider + model id + settings + optional fallbacks, stored in DB, e.g. `fast = openrouter:…`, `smart = anthropic:…`, `judge = google:…`.
-- Agents reference profiles, not raw model ids, so swapping models is a config change.
-- Keys come from env/secret store, never from DB plaintext.
-- Thin wrapper over Pydantic AI `Model` / `FallbackModel`.
+### 5.1 `models` — provider registry + router
+- **Any number of providers, of any kind.** Each entry in `config/models.yaml` is a *model profile*: `name, provider, model, capability, tags, cost, context_window, key_env`.
+- **Capabilities:** `chat` (text + tools), `vision`, `image_gen`, `tts` (voice), `stt`, `embedding`.
+- Start set: **Groq** (fast/cheap chat, TTS, STT) and **Gemini** (strong chat, vision, image generation, TTS, embeddings). Adding a provider = add a YAML entry (+ a small adapter only if Pydantic AI doesn't support it yet).
+- **Router:** `pick(capability, prefer="cheap"|"fast"|"smart", needs={...}, exclude_provider=...)` returns the best available profile whose key is configured. Agents and tools ask for a *capability*, not a model. The verifier asks with `exclude_provider=<executor's provider>` so the judge is always a different provider.
+- Chat/vision/image/embedding go through Pydantic AI (`Model`, `FallbackModel`, `ImageGenerationModel`, embeddings). TTS/STT use thin adapters over the Groq and Google SDKs.
+- Keys come from env/secret store only. Every call writes a `usage` row (provider, model, capability, tokens/units, cost, latency, run) for the dashboard.
 
 ### 5.2 `agents` — agent definitions
 - An agent = name, instructions (markdown, AGENTS.md style), model profile, toolset, budgets, permission policy.
@@ -219,7 +221,13 @@ Deliberately left out of v1: knowledge graphs, background consolidation jobs, re
 ### 5.9 `api` — FastAPI
 Serves the dashboard and channel webhooks. Full endpoint list in `dashboard-spec.md` §5. Live updates via SSE from the `events` table (Supabase Realtime is an alternative for the dashboard).
 
-### 5.10 `evals`
+### 5.10 `extensions` — skills, MCP, plugins (loaded on demand)
+- **Skills:** folders with a `SKILL.md` (frontmatter `name`, `description`) plus optional files/scripts, following the open Agent Skills format. Only names + descriptions sit in the prompt. The agent calls `load_skill(name)` to pull the full body when a task needs it, which keeps tokens low.
+- **MCP servers:** declared in `config/mcp.yaml` (stdio or HTTP), attached per agent, connected lazily on first use. Tool names are namespaced `mcp__<server>__<tool>`.
+- **Plugins:** a folder bundling agents + skills + MCP servers + check types (`plugin.yaml`). The domain packs (`creative`, `analytics`, `ops`) are plugins. Enable/disable without code changes.
+- Discovery paths: `./skills`, `./plugins`, `~/.agent0/…`.
+
+### 5.11 `evals`
 - `pydantic_evals` datasets: fixed tasks with expected outcomes, run on every change to prompts/models/verifier.
 - Report: pass rate, cost, latency per model profile, so "should we switch to model X?" gets answered with numbers.
 
@@ -227,7 +235,10 @@ Serves the dashboard and channel webhooks. Full endpoint list in `dashboard-spec
 
 ```
 agents(id, name, instructions_md, model_profile_id, tools jsonb, policy jsonb, version)
-model_profiles(id, name, provider, model, settings jsonb, fallbacks jsonb)
+model_profiles(id, name, provider, model, capability, tags, cost jsonb, settings jsonb, fallbacks jsonb)
+usage(id, run_id null, profile, provider, model, capability, input_units, output_units,
+      cost_usd, latency_ms, ok, created_at)                       -- every model call
+extensions(id, kind[skill|mcp|plugin], name, enabled, config jsonb)
 tasks(id, title, prompt, source[telegram|api|cli|schedule], agent_id, status,
       notify_level, budget jsonb, created_by, created_at)
 runs(id, task_id, attempt, status, temporal_workflow_id, sandbox_id,
@@ -304,9 +315,9 @@ harness/
   docs/architecture.md  docs/dashboard-spec.md
   agents/                   # agent definitions (markdown + frontmatter)
     planner/agent.md  executor/agent.md  verifier/agent.md
-  src/harness/
-    models/  agents/  orchestrator/  verify/  memory/
-    tools/  sandbox/  policy/  channels/  api/  evals/
+  src/agent0/
+    models/  agents/  orchestrator/  verify/  memory/  knowledge/
+    tools/  sandbox/  policy/  channels/  extensions/  api/  evals/
     db/ (schema, migrations)  cli.py  config.py
   tests/
   infra/ docker-compose.yml  (Phase 3: Dockerfile.api, Dockerfile.worker)
@@ -322,8 +333,9 @@ Decided:
 - **Verification at three moments only** (§5.4).
 - **Local first, then cloud.**
 
+- Providers: **Groq + Gemini** to start, registry open to any number and kind (§5.1).
+
 Still open:
-1. Model API keys available (need two providers: worker ≠ judge, plus image generation for the creative demo).
-2. Cloud host: small VM vs Railway (decide at Phase 3).
+1. Cloud host: small VM vs Railway (decide at Phase 3).
 
 Reference code: ideas may be studied from other projects, but no code or prompt text is copied from any repository of unclear provenance.
