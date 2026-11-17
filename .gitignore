@@ -8,3 +8,8 @@ __pycache__/
 *.egg-info/
 dist/
 .claude/
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.env*
+.env.*
+!.env.example
