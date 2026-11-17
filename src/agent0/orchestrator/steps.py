@@ -133,7 +133,7 @@ class Engine:
         started = time.monotonic()
         result = await agent.run(prompt)
         await self._record_chat(
-            run_id, profiles[0], result.usage(), int((time.monotonic() - started) * 1000), True
+            run_id, profiles[0], result.usage, int((time.monotonic() - started) * 1000), True
         )
         spec = result.output
         if self.rt.repos:
@@ -189,7 +189,7 @@ class Engine:
             sandbox=sandbox,
             events=self.rt.events,
             policy=_policy(agent_def, self.rt),
-            budget=BudgetMeter(budget),
+            budget=BudgetMeter(budget=budget),
             approved=set(approved),
             knowledge=self.rt.knowledge,
             router=self.rt.router,
@@ -219,8 +219,8 @@ class Engine:
                 deps=deps,
                 usage_limits=UsageLimits(request_limit=budget.max_steps),
             )
-            cost = await self._record_chat(run_id, profiles[0], run.usage(), self._ms(started), True)
-            usage = run.usage()
+            cost = await self._record_chat(run_id, profiles[0], run.usage, self._ms(started), True)
+            usage = run.usage
             result = AttemptResult(
                 status="done",
                 output=run.output,
