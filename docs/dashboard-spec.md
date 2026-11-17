@@ -67,7 +67,12 @@ Primary user: the operator (single user in v1, design so a small team works late
 - Skill detail shows the `SKILL.md` rendered. MCP detail shows tools and a "test connection" button.
 
 ### 3.7 Memory `/memory`
-- Tree by scope (global / agent / project) → markdown docs. View, edit, see revisions, delete. Search box (`GET /memory/search`).
+- List of learned **facts** (filter by scope: global / agent / project; toggle "show expired"). Each: content, source (run or document id, linked), valid from, current/expired badge.
+- Search box (`GET /memory/search?q=`).
+- Edit a fact (`PUT /memory/{id}` with `{content}`): the old fact is expired and a new one supersedes it.
+- Forget (`DELETE /memory/{id}`): expires it (never hard-deleted).
+- History (`GET /memory/{id}/revisions`): the chain of versions.
+- Agent instructions (the "instructions" memory tier) are edited on the Agents page.
 
 ### 3.8 Schedules `/schedules`
 - Recurring tasks: agent, cron (with human-readable "every Monday 9:00"), prompt, enabled toggle, last/next run.
@@ -129,8 +134,8 @@ Base: `/api/v1`. JSON. Errors: `{ "error": { "code": "string", "message": "strin
 | PUT | `/secrets/{name}` | `{ "value": string }` → stored encrypted (204) |
 | DELETE | `/secrets/{name}` | Remove stored key (204) |
 | POST | `/secrets/{name}/test` | `{ ok: boolean, message: string }` |
-| GET | `/memory?scope=&scope_id=`, GET `/memory/search?q=` | Memory list/search |
-| GET/PUT/DELETE | `/memory/{id}`, GET `/memory/{id}/revisions` | Memory doc |
+| GET | `/memory?scope=&scope_id=&include_expired=`, GET `/memory/search?q=` | Facts list/search |
+| GET/PUT/DELETE | `/memory/{id}`, GET `/memory/{id}/revisions` | Fact (PUT `{content}` supersedes; DELETE expires) |
 | GET/POST | `/schedules`, PUT/DELETE `/schedules/{id}` | Schedules |
 | GET | `/stream` | **SSE** global stream: every new event across runs (powers Overview + Activity) |
 
@@ -204,6 +209,12 @@ interface Extension {
   id: string; kind: "skill" | "mcp" | "plugin"; name: string; description: string;
   enabled: boolean; status?: "connected" | "error" | "idle";
   config: Record<string, unknown>;
+}
+
+interface MemoryFact {
+  id: string; scope: "global" | "agent" | "project"; scope_id?: string;
+  content: string; source_id?: string; valid_from: string; valid_to?: string;
+  superseded_by?: string; current: boolean;
 }
 
 interface Artifact {

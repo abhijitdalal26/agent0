@@ -186,6 +186,23 @@ class _Schedules:
         return self.rows.pop(id, None) is not None
 
 
+class _Facts:
+    def __init__(self) -> None:
+        self.rows: list[dict] = []
+
+    async def list(self, scope=None, scope_id=None, include_expired=False, limit=500):
+        return [r for r in self.rows if include_expired or r["valid_to"] is None][:limit]
+
+    async def search(self, q, limit=50):
+        return [r for r in self.rows if r["valid_to"] is None and q.lower() in r["content"].lower()][:limit]
+
+    async def get(self, fact_id):
+        return next((r for r in self.rows if r["id"] == fact_id), None)
+
+    async def history(self, fact_id):
+        return [r for r in self.rows if r["id"] == fact_id]
+
+
 class FakeRepos:
     def __init__(self) -> None:
         self.tasks = _Tasks()
@@ -199,6 +216,7 @@ class FakeRepos:
         self.model_profiles = _Profiles()
         self.extensions = _Extensions()
         self.schedules = _Schedules()
+        self.facts = _Facts()
 
     async def seed_run(
         self, status: RunStatus = RunStatus.EXECUTING, agent: str = "executor", **task_kw

@@ -223,7 +223,21 @@ def test_agents_schedules_usage_and_stubs(env):
     assert env.client.get(f"{BASE}/agents/executor/versions").json()["items"][0]["version"] == 1
     assert env.client.get(f"{BASE}/agents/nope").status_code == 404
     assert env.client.put(f"{BASE}/agents/executor").status_code == 501
-    assert env.client.get(f"{BASE}/memory/search?q=x").status_code == 501
+    env.repos.facts.rows.append(
+        {
+            "id": "f1",
+            "scope": "global",
+            "scope_id": None,
+            "content": "Brand never says cure",
+            "source_id": "r1",
+            "valid_from": None,
+            "valid_to": None,
+            "superseded_by": None,
+        }
+    )
+    found = env.client.get(f"{BASE}/memory/search?q=cure").json()["items"]
+    assert [f["id"] for f in found] == ["f1"] and found[0]["current"]
+    assert env.client.get(f"{BASE}/memory/nope").status_code == 404
     s = env.client.post(f"{BASE}/schedules", json={"agent": "executor", "cron": "0 9 * * 1", "prompt": "p"})
     assert s.status_code == 201
     sid = s.json()["id"]

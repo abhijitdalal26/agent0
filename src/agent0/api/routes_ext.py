@@ -211,24 +211,81 @@ async def update_agent(name: str) -> None:
     raise _not_implemented("editing agents")
 
 
+class FactEdit(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+
+
+def _fact(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **row,
+        "valid_from": iso(row.get("valid_from")),
+        "valid_to": iso(row.get("valid_to")),
+        "current": row.get("valid_to") is None,
+    }
+
+
+def _memory_store(deps: ApiDeps):
+    from agent0.memory.pg import PgMemoryStore
+
+    return PgMemoryStore(deps.repos.pool)
+
+
 @router.get("/memory")
-async def list_memory(scope: str | None = None, scope_id: str | None = None) -> None:
-    raise _not_implemented("memory documents")
+async def list_memory(
+    deps: Deps,
+    scope: str | None = None,
+    scope_id: str | None = None,
+    include_expired: bool = False,
+    limit: Limit = 100,
+    cursor: Cursor = None,
+) -> dict[str, Any]:
+    rows = await deps.repos.facts.list(scope, scope_id, include_expired, MAX_SCAN)
+    return paginate(rows, limit, cursor, _fact)
 
 
 @router.get("/memory/search")
-async def search_memory(q: str) -> None:
-    raise _not_implemented("memory search")
+async def search_memory(deps: Deps, q: str) -> dict[str, Any]:
+    return {"items": [_fact(r) for r in await deps.repos.facts.search(q)], "next_cursor": None}
 
 
-@router.api_route("/memory/{doc_id}", methods=["GET", "PUT", "DELETE"])
-async def memory_doc(doc_id: str) -> None:
-    raise _not_implemented("memory documents")
+async def _get_fact(deps: ApiDeps, fact_id: str) -> dict[str, Any]:
+    row = await deps.repos.facts.get(fact_id)
+    if row is None:
+        raise ApiError(404, "not_found", "fact not found")
+    return row
 
 
-@router.get("/memory/{doc_id}/revisions")
-async def memory_revisions(doc_id: str) -> None:
-    raise _not_implemented("memory revisions")
+@router.get("/memory/{fact_id}")
+async def get_memory(deps: Deps, fact_id: str) -> dict[str, Any]:
+    return _fact(await _get_fact(deps, fact_id))
+
+
+@router.put("/memory/{fact_id}")
+async def edit_memory(deps: Deps, fact_id: str, body: FactEdit) -> dict[str, Any]:
+    from agent0.memory.base import Fact
+
+    old = await _get_fact(deps, fact_id)
+    if old["valid_to"] is not None:
+        raise ApiError(409, "expired", "only current facts can be edited")
+    new = Fact(scope=old["scope"], scope_id=old["scope_id"], content=body.content, source_id="dashboard")
+    await _memory_store(deps).apply(new, "changes", fact_id)
+    return _fact(await _get_fact(deps, new.id))
+
+
+@router.delete("/memory/{fact_id}", status_code=204)
+async def forget_memory(deps: Deps, fact_id: str) -> None:
+    from agent0.memory.base import Fact
+
+    old = await _get_fact(deps, fact_id)
+    if old["valid_to"] is None:
+        # Facts are expired, never deleted, so the audit trail survives.
+        await _memory_store(deps).apply(Fact(content=old["content"]), "ends", fact_id)
+
+
+@router.get("/memory/{fact_id}/revisions")
+async def memory_revisions(deps: Deps, fact_id: str) -> dict[str, Any]:
+    await _get_fact(deps, fact_id)
+    return {"items": [_fact(r) for r in await deps.repos.facts.history(fact_id)], "next_cursor": None}
 
 
 class ScheduleIn(BaseModel):

@@ -498,6 +498,48 @@ class ScheduleRepo(_Repo):
         return await self._exec("DELETE FROM schedules WHERE id = %s", (id,)) > 0
 
 
+class FactRepo(_Repo):
+    _COLS = "id, scope, scope_id, content, source_id, valid_from, valid_to, superseded_by"
+
+    async def list(
+        self,
+        scope: str | None = None,
+        scope_id: str | None = None,
+        include_expired: bool = False,
+        limit: int = 500,
+    ) -> list[Row]:
+        return await self._all(
+            f"SELECT {self._COLS} FROM facts WHERE (%s::text IS NULL OR scope = %s)"
+            " AND (%s::text IS NULL OR scope_id = %s) AND (%s OR valid_to IS NULL)"
+            " ORDER BY valid_from DESC LIMIT %s",
+            (scope, scope, scope_id, scope_id, include_expired, limit),
+        )
+
+    async def search(self, q: str, limit: int = 50) -> list[Row]:
+        from agent0.db.fts import or_tsquery
+
+        query = or_tsquery(q)
+        if not query:
+            return []
+        return await self._all(
+            f"SELECT {self._COLS} FROM facts WHERE valid_to IS NULL AND tsv @@ to_tsquery('english', %s)"
+            " ORDER BY ts_rank(tsv, to_tsquery('english', %s)) DESC LIMIT %s",
+            (query, query, limit),
+        )
+
+    async def get(self, fact_id: str) -> Row | None:
+        return await self._one(f"SELECT {self._COLS} FROM facts WHERE id = %s", (fact_id,))
+
+    async def history(self, fact_id: str) -> list[Row]:
+        return await self._all(
+            f"WITH RECURSIVE chain AS (SELECT {self._COLS} FROM facts WHERE id = %s"
+            f" UNION SELECT f.id, f.scope, f.scope_id, f.content, f.source_id, f.valid_from, f.valid_to,"
+            " f.superseded_by FROM facts f JOIN chain c ON f.superseded_by = c.id)"
+            " SELECT * FROM chain ORDER BY valid_from DESC",
+            (fact_id,),
+        )
+
+
 class Repos:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self.pool = pool
@@ -512,6 +554,7 @@ class Repos:
         self.model_profiles = ModelProfileRepo(pool)
         self.extensions = ExtensionRepo(pool)
         self.schedules = ScheduleRepo(pool)
+        self.facts = FactRepo(pool)
 
 
 class PgEventSink:
