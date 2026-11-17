@@ -24,6 +24,7 @@ dependencies = [
     "pillow>=13.0.0",
     "jsonschema>=4.26.0",
     "cryptography>=50.0.2",
+    "python-dotenv>=1.2.4",
 ]
 
 [project.scripts]

@@ -1,6 +1,19 @@
-import typer
+from __future__ import annotations
 
-app = typer.Typer(no_args_is_help=True)
+import asyncio
+
+import typer
+from rich.console import Console
+
+app = typer.Typer(no_args_is_help=True, help="agent0: a multi-model agent harness that verifies its work.")
+console = Console()
+
+
+@app.callback()
+def _load_env() -> None:
+    from dotenv import load_dotenv
+
+    load_dotenv(".env", override=False)
 
 
 @app.command()
@@ -8,3 +21,163 @@ def version() -> None:
     from importlib.metadata import version as v
 
     typer.echo(v("agent0"))
+
+
+@app.command()
+def run(
+    prompt: str,
+    agent: str = typer.Option("executor", help="Agent name from agents/ or plugins."),
+    retries: int = typer.Option(2, help="Retries after a failed verification."),
+    max_usd: float = typer.Option(1.0, help="Spend cap for this task."),
+    sandbox: str = typer.Option(None, help="docker | local (default from settings)."),
+) -> None:
+    """Run one task in this process and stream what happens. Approvals are asked in the terminal."""
+    asyncio.run(_run(prompt, agent, retries, max_usd, sandbox))
+
+
+async def _run(prompt: str, agent: str, retries: int, max_usd: float, sandbox: str | None) -> None:
+    from agent0.config import get_settings
+    from agent0.core.events import MemoryEventSink
+    from agent0.core.types import Budget, Task
+    from agent0.orchestrator.local import LocalOrchestrator, final_message
+    from agent0.orchestrator.runtime import build_runtime
+
+    settings = get_settings()
+    if sandbox:
+        settings = settings.model_copy(update={"sandbox": sandbox})
+    sink = MemoryEventSink()
+    rt = build_runtime(settings, events=sink)
+    orch = LocalOrchestrator(rt)
+
+    async def ask(chat_id, run_id, approval_id, question):
+        answer = await asyncio.to_thread(
+            console.input, f"\n[bold yellow]Approval needed[/] {question}\napprove? [y/N] "
+        )
+        await orch.decide_approval(
+            approval_id, "approve" if answer.strip().lower() == "y" else "reject", "cli"
+        )
+
+    rt.notify_approval = ask
+    queue = sink.subscribe()
+    task = Task(
+        title=prompt[:80],
+        prompt=prompt,
+        agent=agent,
+        source="cli",
+        budget=Budget(max_retries=retries, max_usd=max_usd),
+    )
+    run = await orch.submit(task)
+    job = orch.running[run.id]
+    console.print(f"[dim]run {run.id} · workspace {settings.workspace_root / run.id}[/]")
+    while not (job.done() and queue.empty()):
+        try:
+            event = await asyncio.wait_for(queue.get(), timeout=0.5)
+        except TimeoutError:
+            continue
+        console.print(f"[cyan]{event.type.value:<20}[/] {_brief(event.payload)}")
+    console.print()
+    console.print(final_message(task, run.id, job.result()))
+
+
+def _brief(payload: dict) -> str:
+    keys = (
+        "title",
+        "goal",
+        "tool",
+        "args",
+        "check_id",
+        "status",
+        "evidence",
+        "profile",
+        "cost_usd",
+        "message",
+        "reason",
+        "question",
+        "name",
+        "ids",
+    )
+    parts = [f"{k}={str(payload[k])[:120]}" for k in keys if k in payload]
+    return " ".join(parts)[:300]
+
+
+@app.command()
+def serve(host: str = typer.Option(None), port: int = typer.Option(None), reload: bool = False) -> None:
+    """API for the dashboard + Telegram bot + orchestrator (local or temporal, from AGENT0_ORCHESTRATOR)."""
+    import uvicorn
+
+    from agent0.config import get_settings
+
+    s = get_settings()
+    uvicorn.run(
+        "agent0.serve:app_factory",
+        factory=True,
+        host=host or s.api_host,
+        port=port or s.api_port,
+        reload=reload,
+    )
+
+
+@app.command()
+def worker() -> None:
+    """Temporal worker that executes durable runs (use with AGENT0_ORCHESTRATOR=temporal)."""
+    from agent0.serve import worker as run
+
+    asyncio.run(run())
+
+
+@app.command("db-init")
+def db_init() -> None:
+    """Create or update the Postgres schema."""
+
+    async def go() -> None:
+        from agent0.db.pool import apply_schema, close_pool, create_pool
+
+        pool = await create_pool()
+        try:
+            await apply_schema(pool)
+        finally:
+            await close_pool(pool)
+
+    asyncio.run(go())
+    console.print("schema applied")
+
+
+@app.command("ingest")
+def ingest(source: str) -> None:
+    """Index a docs knowledge source from config/knowledge.yaml into Postgres."""
+
+    async def go() -> None:
+        from agent0.config import get_settings
+        from agent0.db.pool import close_pool, create_pool
+        from agent0.knowledge.registry import load_sources
+
+        s = get_settings()
+        pool = await create_pool(s)
+        try:
+            src = load_sources(s.config_dir / "knowledge.yaml", pool=pool)[source]
+            console.print(f"{await src.ingest()} chunks indexed")  # type: ignore[attr-defined]
+        finally:
+            await close_pool(pool)
+
+    asyncio.run(go())
+
+
+@app.command("secrets-keygen")
+def secrets_keygen() -> None:
+    """Print a new master key for AGENT0_SECRET_KEY (encrypts API keys stored from the dashboard)."""
+    from agent0.secrets import generate_key
+
+    typer.echo(generate_key())
+
+
+@app.command()
+def models() -> None:
+    """Show model profiles and which ones have a key configured."""
+    from agent0.config import get_settings
+    from agent0.models.registry import ModelRegistry
+
+    reg = ModelRegistry.load(get_settings().config_dir / "models.yaml")
+    ok = {p.name for p in reg.available()}
+    for p in reg.all():
+        mark = "[green]ready[/]" if p.name in ok else f"[red]missing {p.key_env}[/]"
+        console.print(f"{p.capability.value:<10} {p.name:<16} {p.provider}:{p.model:<36} {mark}")
