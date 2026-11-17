@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Layers, Wrench, Sparkles, Server, CheckCircle2, AlertCircle, Play, Code } from "lucide-react";
 import { getExtensions, testMcpConnection } from "@/lib/api";
 import type { Extension } from "@/types";
+import { EmptyState } from "@/components/ui";
 
 export default function ExtensionsPage() {
   const [extensions, setExtensions] = useState<Extension[]>([]);
@@ -12,10 +13,12 @@ export default function ExtensionsPage() {
   const [testResult, setTestResult] = useState<{ loading: boolean; message?: string }>({ loading: false });
 
   useEffect(() => {
-    getExtensions(activeTab).then((data) => {
-      setExtensions(data);
-      if (data.length > 0) setSelectedExt(data[0]);
-    });
+    getExtensions(activeTab)
+      .then((data) => {
+        setExtensions(data);
+        setSelectedExt(data[0] ?? null);
+      })
+      .catch(() => setExtensions([]));
   }, [activeTab]);
 
   const handleTestConnection = async (id: string) => {
@@ -79,6 +82,12 @@ export default function ExtensionsPage() {
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* Left List */}
         <div className="md:col-span-5 space-y-2">
+          {extensions.length === 0 && (
+            <EmptyState
+              title={`No ${activeTab === "skill" ? "skills" : activeTab === "mcp" ? "MCP servers" : "plugins"} found`}
+              hint={activeTab === "skill" ? "Drop a SKILL.md folder into the skills directory." : activeTab === "mcp" ? "Declare servers in config/mcp.yaml." : "Install a plugin pack to see it here."}
+            />
+          )}
           {extensions.map((ext) => {
             const isSelected = selectedExt?.id === ext.id;
             return (

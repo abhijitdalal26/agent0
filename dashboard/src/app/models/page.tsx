@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { getModelProfiles, getRouterPreview } from "@/lib/api";
 import type { ModelProfile, Capability } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { EmptyState, Skeleton } from "@/components/ui";
 import { AddEditProfileModal } from "@/components/AddEditProfileModal";
 
 const CAPABILITY_TABS: { id: Capability | "all"; label: string; icon?: any }[] = [
@@ -35,7 +35,10 @@ const CAPABILITY_TABS: { id: Capability | "all"; label: string; icon?: any }[] =
 ];
 
 export default function ModelsPage() {
-  const [profiles, setProfiles] = useState<ModelProfile[]>([]);
+  const [all, setAll] = useState<ModelProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [previewState, setPreviewState] = useState<"loading" | "ok" | "none">("loading");
   const [selectedTab, setSelectedTab] = useState<Capability | "all">("all");
   const [routerCapability, setRouterCapability] = useState<Capability>("chat");
   const [routerPrefer, setRouterPrefer] = useState<"cheap" | "fast" | "smart">("fast");
@@ -44,20 +47,40 @@ export default function ModelsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<ModelProfile | null>(null);
 
-  const loadProfiles = () => {
-    getModelProfiles(selectedTab).then(setProfiles);
-  };
+  useEffect(() => {
+    getModelProfiles()
+      .then((p) => {
+        setAll(p);
+        setLoadError(false);
+      })
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
-    loadProfiles();
-  }, [selectedTab]);
-
-  useEffect(() => {
-    getRouterPreview(routerCapability, routerPrefer).then(setRouterPreview);
+    let live = true;
+    setPreviewState("loading");
+    getRouterPreview(routerCapability, routerPrefer)
+      .then((r) => {
+        if (!live) return;
+        setRouterPreview(r?.profile ? r : null);
+        setPreviewState(r?.profile ? "ok" : "none");
+      })
+      .catch(() => {
+        if (!live) return;
+        setRouterPreview(null);
+        setPreviewState("none");
+      });
+    return () => {
+      live = false;
+    };
   }, [routerCapability, routerPrefer]);
 
+  const profiles = selectedTab === "all" ? all : all.filter((p) => p.capability === selectedTab);
+  const count = (id: Capability | "all") => (id === "all" ? all.length : all.filter((p) => p.capability === id).length);
+
   const handleSaveProfile = (newProfile: Partial<ModelProfile> & { apiKey?: string }) => {
-    setProfiles((prev) => {
+    setAll((prev) => {
       const idx = prev.findIndex((p) => p.id === newProfile.id);
       if (idx !== -1) {
         const updated = [...prev];
@@ -158,7 +181,13 @@ export default function ModelsPage() {
           </div>
         </div>
 
-        {routerPreview && (
+        {previewState === "none" && (
+          <div className="p-3 rounded-lg bg-card border border-dashed border-border text-xs text-muted-foreground">
+            No enabled profile with a configured key can serve <span className="font-mono">{routerCapability}</span>. Add a profile or set its API key.
+          </div>
+        )}
+        {previewState === "loading" && <div className="h-14 rounded-lg bg-muted/50 animate-pulse" />}
+        {previewState === "ok" && routerPreview && (
           <div className="p-3 rounded-lg bg-card border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2 font-mono">
@@ -171,6 +200,13 @@ export default function ModelsPage() {
               <p className="text-[11px] text-muted-foreground leading-relaxed">
                 {routerPreview.reason}
               </p>
+              {routerPreview.profile.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {routerPreview.profile.tags.map((t) => (
+                    <span key={t} className="px-1.5 rounded text-[10px] font-mono bg-blue-500/10 text-blue-400">{t}</span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -189,11 +225,23 @@ export default function ModelsPage() {
             }`}
           >
             {tab.label}
+            <span className="ml-1.5 font-mono text-[10px] text-muted-foreground">{count(tab.id)}</span>
           </button>
         ))}
       </div>
 
       {/* Model Profiles Table */}
+      {loading ? (
+        <Skeleton rows={4} />
+      ) : loadError ? (
+        <EmptyState title="Could not load model profiles" hint="Check the API connection and reload." />
+      ) : profiles.length === 0 ? (
+        <EmptyState
+          title={selectedTab === "all" ? "No model profiles yet" : "No profiles for this capability"}
+          hint="Add a model profile and its API key so agents can use it."
+          action={<button onClick={() => { setEditingProfile(null); setIsModalOpen(true); }} className="text-xs text-blue-500 hover:underline">Add model</button>}
+        />
+      ) : (
       <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -213,7 +261,10 @@ export default function ModelsPage() {
               {profiles.map((p) => (
                 <tr key={p.id} className="hover:bg-secondary/30 transition-colors">
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-foreground font-mono">{p.name}</div>
+                    <div className="font-semibold text-foreground font-mono">
+                      {p.name}
+                      {!p.enabled && <span className="ml-2 px-1.5 rounded text-[10px] bg-zinc-500/15 text-zinc-500 font-sans">disabled</span>}
+                    </div>
                     <div className="text-[11px] text-muted-foreground font-mono">{p.model}</div>
                   </td>
 
@@ -301,6 +352,7 @@ export default function ModelsPage() {
           </table>
         </div>
       </div>
+      )}
 
       {/* Add / Edit Profile Modal */}
       <AddEditProfileModal
