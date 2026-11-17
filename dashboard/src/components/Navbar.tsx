@@ -10,6 +10,7 @@ import {
   Calendar,
   CheckCircle2,
   Cpu,
+  KeyRound,
   Layers,
   LayoutDashboard,
   ListTodo,
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
   { href: "/memory", label: "Memory", icon: Brain },
   { href: "/schedules", label: "Schedules", icon: Calendar },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings/keys", label: "Keys", icon: KeyRound },
 ];
 
 export function Navbar() {

@@ -1,198 +1,269 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Brain, Search, FileText, Globe, Bot, FolderGit2, Save, Trash2, History, Check } from "lucide-react";
-import { getMemoryDocs } from "@/lib/api";
-import type { MemoryDoc } from "@/types";
+import { useCallback, useEffect, useState } from "react";
+import { Brain, Search, History, Pencil, Trash2, X } from "lucide-react";
+import {
+  editFact,
+  errMessage,
+  factRevisions,
+  forgetFact,
+  listFacts,
+  searchFacts,
+  type FactItem,
+} from "@/lib/api-settings";
 import { formatRelativeTime } from "@/lib/utils";
+import { Badge, btn, btnDanger, btnPrimary, Empty, ErrorBox, inputCls, Loading } from "@/components/new/ui";
 
-export default function MemoryPage() {
-  const [docs, setDocs] = useState<MemoryDoc[]>([]);
-  const [selectedDoc, setSelectedDoc] = useState<MemoryDoc | null>(null);
-  const [search, setSearch] = useState("");
-  const [scopeFilter, setScopeFilter] = useState("all");
-  const [editorContent, setEditorContent] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
+const SCOPES = ["all", "global", "agent", "project", "task"];
+
+function ScopeTag({ f }: { f: FactItem }) {
+  return (
+    <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-muted text-foreground">
+      {f.scope}
+      {f.scope_id ? `/${f.scope_id}` : ""}
+    </span>
+  );
+}
+
+function HistoryDrawer({ fact, onClose }: { fact: FactItem; onClose: () => void }) {
+  const [rows, setRows] = useState<FactItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getMemoryDocs(scopeFilter, search).then((data) => {
-      setDocs(data);
-      if (data.length > 0 && (!selectedDoc || !data.some((d) => d.id === selectedDoc.id))) {
-        setSelectedDoc(data[0]);
-        setEditorContent(data[0].content);
-      }
-    });
-  }, [scopeFilter, search]);
-
-  const handleSelectDoc = (doc: MemoryDoc) => {
-    setSelectedDoc(doc);
-    setEditorContent(doc.content);
-    setSavedSuccess(false);
-  };
-
-  const handleSave = () => {
-    if (!selectedDoc) return;
-    setSaving(true);
-    setTimeout(() => {
-      selectedDoc.content = editorContent;
-      selectedDoc.revision += 1;
-      selectedDoc.updated_at = new Date().toISOString();
-      setSaving(false);
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
-    }, 400);
-  };
-
-  const handleDelete = () => {
-    if (!selectedDoc) return;
-    if (confirm(`Delete memory doc '${selectedDoc.path}'?`)) {
-      const remaining = docs.filter((d) => d.id !== selectedDoc.id);
-      setDocs(remaining);
-      if (remaining.length > 0) handleSelectDoc(remaining[0]);
-      else setSelectedDoc(null);
-    }
-  };
-
-  const getScopeIcon = (scope: MemoryDoc["scope"]) => {
-    switch (scope) {
-      case "global":
-        return <Globe className="w-3.5 h-3.5 text-blue-400" />;
-      case "agent":
-        return <Bot className="w-3.5 h-3.5 text-purple-400" />;
-      case "project":
-        return <FolderGit2 className="w-3.5 h-3.5 text-emerald-400" />;
-    }
-  };
+    let live = true;
+    factRevisions(fact.id)
+      .then((r) => live && setRows(r.items))
+      .catch((e) => live && setError(errMessage(e)));
+    return () => {
+      live = false;
+    };
+  }, [fact.id]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Fact history">
+      <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Close history" />
+      <aside className="relative w-full max-w-md h-full bg-card border-l border-border overflow-y-auto p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <History className="w-4 h-4" /> History
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-secondary" aria-label="Close">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {error && <ErrorBox message={error} />}
+        {!rows && !error && <Loading />}
+        {rows && rows.length === 0 && <Empty>No revisions.</Empty>}
+        {rows && (
+          <ol className="space-y-3 border-l border-border pl-4">
+            {rows.map((r) => (
+              <li key={r.id} className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  <Badge tone={r.current ? "ok" : "muted"}>{r.current ? "current" : "expired"}</Badge>
+                  {r.valid_from && <span>{formatRelativeTime(r.valid_from)}</span>}
+                  {r.source_id && <span className="font-mono">by {r.source_id}</span>}
+                </div>
+                <p className="text-xs text-foreground whitespace-pre-wrap break-words">{r.content}</p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function FactCard({
+  fact,
+  onChanged,
+  onHistory,
+}: {
+  fact: FactItem;
+  onChanged: () => void;
+  onHistory: (f: FactItem) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(fact.content);
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run(fn: () => Promise<unknown>, done: () => void) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await fn();
+      done();
+      onChanged();
+    } catch (e) {
+      setErr(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <li className={`rounded-xl border p-3.5 space-y-2 ${fact.current ? "border-border bg-card/60" : "border-border/60 bg-card/30"}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={fact.current ? "ok" : "muted"}>{fact.current ? "current" : "expired"}</Badge>
+        <ScopeTag f={fact} />
+        {fact.valid_from && <span className="text-[11px] text-muted-foreground">since {formatRelativeTime(fact.valid_from)}</span>}
+        {fact.valid_to && <span className="text-[11px] text-muted-foreground">ended {formatRelativeTime(fact.valid_to)}</span>}
+      </div>
+
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={4}
+            maxLength={4000}
+            className={`${inputCls} font-mono`}
+            aria-label="Edit fact"
+          />
+          <p className="text-[11px] text-muted-foreground">Saving creates a new fact that supersedes this one. The old text stays in history.</p>
+          <div className="flex gap-2">
+            <button
+              className={btnPrimary}
+              disabled={busy || !draft.trim() || draft === fact.content}
+              onClick={() => run(() => editFact(fact.id, draft.trim()), () => setEditing(false))}
+            >
+              {busy ? "Saving..." : "Save"}
+            </button>
+            <button className={btn} onClick={() => { setEditing(false); setDraft(fact.content); }} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className={`text-xs whitespace-pre-wrap break-words ${fact.current ? "text-foreground" : "text-muted-foreground line-through decoration-muted-foreground/40"}`}>
+          {fact.content}
+        </p>
+      )}
+
+      {confirm && (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs">
+          <span className="flex-1">Forget this fact? It is expired, not deleted, and stays in history.</span>
+          <div className="flex gap-2">
+            <button className={btnDanger} disabled={busy} onClick={() => run(() => forgetFact(fact.id), () => setConfirm(false))}>
+              {busy ? "..." : "Forget"}
+            </button>
+            <button className={btn} disabled={busy} onClick={() => setConfirm(false)}>
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
+
+      {err && <ErrorBox message={err} />}
+
+      {!editing && !confirm && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {fact.current && (
+            <button className={btn} onClick={() => { setDraft(fact.content); setEditing(true); }}>
+              <Pencil className="w-3 h-3" /> Edit
+            </button>
+          )}
+          <button className={btn} onClick={() => onHistory(fact)}>
+            <History className="w-3 h-3" /> History
+          </button>
+          {fact.current && (
+            <button className={`${btn} text-rose-500`} onClick={() => setConfirm(true)}>
+              <Trash2 className="w-3 h-3" /> Forget
+            </button>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+export default function MemoryPage() {
+  const [facts, setFacts] = useState<FactItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [scope, setScope] = useState("all");
+  const [showExpired, setShowExpired] = useState(false);
+  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const [history, setHistory] = useState<FactItem | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      if (query) {
+        // Search only returns current facts; apply the scope filter locally.
+        const r = await searchFacts(query);
+        setFacts(r.items.filter((f) => scope === "all" || f.scope === scope));
+      } else {
+        setFacts((await listFacts(scope, showExpired)).items);
+      }
+    } catch (e) {
+      setError(errMessage(e));
+      setFacts(null);
+    }
+  }, [query, scope, showExpired]);
+
+  useEffect(() => {
+    setFacts(null);
+    load();
+  }, [load]);
+
+  return (
+    <div className="space-y-5">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
           <Brain className="w-5 h-5 text-blue-500" />
-          <span>Long-Term Memory & Context Documents</span>
+          <span>Memory</span>
         </h1>
         <p className="text-xs sm:text-sm text-muted-foreground">
-          Scoped instruction docs, regulatory rules, learned facts, and project guidelines injected at plan time.
+          Facts the agents have learned. Editing supersedes a fact and forgetting expires it, so history is always kept.
         </p>
       </div>
 
-      {/* Filter and Search */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search documents by path or content..."
-            className="w-full text-xs pl-9 pr-3 py-2 rounded-lg border border-input bg-card/60 text-foreground placeholder:text-muted-foreground focus:outline-none"
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search current facts"
+            aria-label="Search facts"
+            className={`${inputCls} pl-9`}
           />
         </div>
-
-        <select
-          value={scopeFilter}
-          onChange={(e) => setScopeFilter(e.target.value)}
-          className="text-xs px-2.5 py-2 rounded-lg border border-input bg-card/60 text-foreground focus:outline-none"
-        >
-          <option value="all">All Scopes</option>
-          <option value="global">Global Scope</option>
-          <option value="agent">Agent Scope</option>
-          <option value="project">Project Scope</option>
+        <select value={scope} onChange={(e) => setScope(e.target.value)} aria-label="Scope" className={`${inputCls} sm:w-40`}>
+          {SCOPES.map((s) => (
+            <option key={s} value={s}>
+              {s === "all" ? "All scopes" : s}
+            </option>
+          ))}
         </select>
+        <label className={`flex items-center gap-2 text-xs ${query ? "opacity-50" : ""}`}>
+          <input type="checkbox" checked={showExpired} disabled={!!query} onChange={(e) => setShowExpired(e.target.checked)} />
+          Show expired
+        </label>
       </div>
 
-      {/* Main Layout: Docs Tree / List + Editor */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Left Doc Selector */}
-        <div className="md:col-span-4 space-y-2">
-          {docs.map((doc) => {
-            const isSelected = selectedDoc?.id === doc.id;
-            return (
-              <div
-                key={doc.id}
-                onClick={() => handleSelectDoc(doc)}
-                className={`p-3.5 rounded-xl border text-xs cursor-pointer transition-all space-y-1.5 ${
-                  isSelected
-                    ? "bg-card border-blue-500/50 shadow-sm"
-                    : "bg-card/40 border-border hover:bg-card/70"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-mono text-[11px] text-foreground font-semibold">
-                    {getScopeIcon(doc.scope)}
-                    <span>{doc.scope}</span>
-                    {doc.scope_id && <span className="text-muted-foreground">({doc.scope_id})</span>}
-                  </div>
-                  <span className="text-[10px] font-mono text-muted-foreground">
-                    rev {doc.revision}
-                  </span>
-                </div>
+      {error && <ErrorBox message={error} onRetry={load} />}
+      {!facts && !error && <Loading label="Loading facts" />}
+      {facts && facts.length === 0 && (
+        <Empty>{query ? `No current facts match "${query}".` : "No facts yet. Agents save facts here as they learn."}</Empty>
+      )}
+      {facts && facts.length > 0 && (
+        <ul className="space-y-3">
+          {facts.map((f) => (
+            <FactCard key={f.id} fact={f} onChanged={load} onHistory={setHistory} />
+          ))}
+        </ul>
+      )}
 
-                <div className="font-mono text-xs text-foreground truncate">{doc.path}</div>
-
-                <div className="text-[10px] text-muted-foreground font-mono">
-                  Updated {formatRelativeTime(doc.updated_at)}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Right Editor */}
-        <div className="md:col-span-8">
-          {selectedDoc ? (
-            <div className="rounded-xl border border-border bg-card/60 p-4 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-foreground text-sm">
-                      {selectedDoc.path}
-                    </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground uppercase">
-                      rev {selectedDoc.revision}
-                    </span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    Scope: {selectedDoc.scope}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleDelete}
-                    className="p-2 text-rose-500 hover:text-rose-400 rounded-lg border border-border hover:bg-secondary transition-colors"
-                    title="Delete document"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm shadow-blue-500/30 transition-all disabled:opacity-50"
-                  >
-                    {savedSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                    <span>{savedSuccess ? "Saved (rev+1)" : saving ? "Saving..." : "Save Changes"}</span>
-                  </button>
-                </div>
-              </div>
-
-              <textarea
-                rows={18}
-                value={editorContent}
-                onChange={(e) => setEditorContent(e.target.value)}
-                className="w-full text-xs font-mono p-3 rounded-lg border border-input bg-zinc-950 text-zinc-200 focus:outline-none focus:ring-1 focus:ring-ring resize-y leading-relaxed"
-              />
-            </div>
-          ) : (
-            <div className="p-16 text-center text-muted-foreground text-xs border border-dashed rounded-xl">
-              Select a memory document from the list.
-            </div>
-          )}
-        </div>
-      </div>
+      {history && <HistoryDrawer fact={history} onClose={() => setHistory(null)} />}
     </div>
   );
 }
