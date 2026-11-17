@@ -26,6 +26,14 @@ export interface Task {
   checks_total?: number;
   checks_passed?: number;
   cost_usd?: number;
+  /** Latest run of this task, as embedded by GET /tasks. */
+  latest_run?: Run | null;
+}
+
+/** Paginated list envelope used by every list endpoint (spec section 5). */
+export interface Paginated<T> {
+  items: T[];
+  next_cursor: string | null;
 }
 
 export interface Run {
@@ -133,6 +141,10 @@ export interface ModelProfile {
   key_configured: boolean;
   enabled: boolean;
   key_env_var?: string;
+  /** Backend name for key_env_var. */
+  key_env?: string;
+  context_window?: number;
+  settings?: Record<string, unknown>;
   stats?: {
     calls_7d: number;
     pass_rate: number;
@@ -233,4 +245,80 @@ export interface OverviewStats {
   succeeded_24h: number;
   failed_24h: number;
   spend_today_usd: number;
+}
+
+/** Fact in the temporal memory store (spec section 6). PUT supersedes, DELETE expires. */
+export interface MemoryFact {
+  id: string;
+  scope: "global" | "agent" | "project";
+  scope_id?: string | null;
+  content: string;
+  source_id?: string | null;
+  valid_from: string;
+  valid_to?: string | null;
+  superseded_by?: string | null;
+  current: boolean;
+}
+
+/** Item of GET /secrets. Never contains the secret value. */
+export interface SecretItem {
+  name: string;
+  last4: string | null;
+  configured: boolean;
+  source: "store" | "env" | null;
+  updated_at: string | null;
+}
+
+export interface SecretTestResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface RouterPreview {
+  profile: ModelProfile | null;
+  reason: string;
+}
+
+export type UsageGroupBy = "provider" | "capability" | "agent" | "day";
+
+export interface UsageSummaryRow {
+  /** Value of the group_by dimension (provider name, capability, agent, or day). */
+  [key: string]: string | number | null | undefined;
+}
+
+export interface UsageSummary {
+  group_by: UsageGroupBy;
+  items: UsageSummaryRow[];
+}
+
+export interface UsageFilters {
+  from?: string;
+  to?: string;
+  provider?: string;
+  capability?: string;
+  agent?: string;
+}
+
+export interface EventFilters {
+  type?: string;
+  agent?: string;
+  run_id?: string;
+}
+
+export interface ScheduleInput {
+  agent: string;
+  cron: string;
+  prompt: string;
+  enabled?: boolean;
+}
+
+export interface ExtensionTestResult {
+  ok: boolean;
+  tools: string[];
+  error: string | null;
+}
+
+/** Shape of the error envelope returned by the backend. */
+export interface ApiErrorBody {
+  error: { code: string; message: string };
 }
