@@ -72,7 +72,9 @@ def _profiles(rt: Runtime, prefer: str, exclude_provider: str | None = None) -> 
 
 def _policy(agent: AgentDef, rt: Runtime) -> Policy:
     roots = (
-        ("/workspace",) if rt.settings.sandbox == "docker" else (str(rt.settings.workspace_root.resolve()),)
+        ("/workspace",)
+        if rt.settings.sandbox in ("docker", "e2b")
+        else (str(rt.settings.workspace_root.resolve()),)
     )
     tools = {k: Decision(v) for k, v in agent.policy.get("tools", {}).items()}
     return Policy(tools=tools, workspace_roots=roots)

@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import os
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,23 +32,28 @@ class LocalSandbox:
         self.workspace = self.files.root
 
     async def exec(self, command: str, timeout_s: int = 120, cwd: str | None = None) -> ExecResult:
-        workdir = self.files.resolve(cwd or ".")
+        # A thread instead of asyncio subprocesses: on Windows psycopg forces the selector loop,
+        # which cannot spawn subprocesses.
+        return await asyncio.to_thread(self._exec, command, timeout_s, self.files.resolve(cwd or "."))
+
+    def _exec(self, command: str, timeout_s: int, workdir: Path) -> ExecResult:
         posix = sys.platform != "win32"
-        proc = await asyncio.create_subprocess_shell(
+        proc = subprocess.Popen(
             command,
+            shell=True,
             cwd=workdir,
             env=_clean_env(),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             start_new_session=posix,
         )
         try:
-            out, err = await asyncio.wait_for(proc.communicate(), timeout_s)
-        except TimeoutError:
+            out, err = proc.communicate(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
             self._kill(proc, posix)
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(proc.wait(), 5)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.communicate(timeout=5)
             return ExecResult(exit_code=-1, stdout="", stderr=f"timed out after {timeout_s}s", timed_out=True)
         return ExecResult(
             exit_code=proc.returncode if proc.returncode is not None else -1,
@@ -56,12 +62,14 @@ class LocalSandbox:
         )
 
     @staticmethod
-    def _kill(proc: asyncio.subprocess.Process, posix: bool) -> None:
+    def _kill(proc: subprocess.Popen[bytes], posix: bool) -> None:
         # killpg/SIGKILL are POSIX-only per typeshed; getattr keeps pyright quiet.
         killpg = getattr(os, "killpg", None)
         with contextlib.suppress(ProcessLookupError):
             if posix and killpg is not None:
                 killpg(proc.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+            elif sys.platform == "win32":
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
             else:
                 proc.kill()
 

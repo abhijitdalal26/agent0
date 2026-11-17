@@ -88,4 +88,9 @@ def create_app(
     for module in (routes_core, routes_models, routes_ext, routes_secrets, sse):
         api.include_router(module.router)
     app.include_router(api)
+
+    @app.get("/healthz", include_in_schema=False)
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app

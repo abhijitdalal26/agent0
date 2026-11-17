@@ -26,6 +26,6 @@ COPY plugins ./plugins
 USER agent0
 EXPOSE 8000
 # uvicorn only listens after startup (DB, secrets, orchestrator) finished. The worker service disables this.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3     CMD ["python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3)"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
 ENTRYPOINT ["agent0"]
 CMD ["serve"]
