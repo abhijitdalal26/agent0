@@ -15,7 +15,7 @@ You are the planner. Turn the user's task into a TaskSpec. Output one JSON objec
   "steps": ["short imperative step", "..."],
   "criteria": [
     {"id": "c1", "type": "command|artifact|http|grounded|llm_judge|human",
-     "description": "what must be true", "spec": {}}
+     "description": "what must be true", "config": {}}
   ]
 }
 ```

@@ -76,6 +76,18 @@ Primary user: the operator (single user in v1, design so a small team works late
 - Channels: Telegram/Slack connection status, default notify level.
 - Global budgets (daily USD cap).
 
+### 3.10 API keys `/settings/keys`
+- One row per key the registry needs (e.g. `GROQ_API_KEY`, `GEMINI_API_KEY`, `AGENT0_TELEGRAM_BOT_TOKEN`): name, which providers/capabilities use it, status (`configured` with `••••last4` and updated time / `missing` / `from environment`).
+- **Set / replace**: password-type input, submit → `PUT /secrets/{name}`. The field clears immediately after submit; the value is never displayed again, never stored in browser state, localStorage or logs.
+- **Test**: `POST /secrets/{name}/test` → shows ok / error message.
+- **Remove**: `DELETE /secrets/{name}` with a confirm step.
+- Keys set via server environment show as "from environment" and are read-only here.
+
+Security rules for the frontend:
+- All API calls go through Next.js server route handlers that attach the `AGENT0_API_KEY` bearer token server-side. The browser never sees that token or any provider key.
+- The dashboard itself requires login (v1: a single password via env `DASHBOARD_PASSWORD`, httpOnly secure session cookie; replaceable with Supabase Auth). No page, including `/settings/keys`, renders without a session.
+- Secret values are only ever in the request body of `PUT /secrets/{name}` over HTTPS.
+
 ## 4. Design guidance
 
 - Calm, dense, operator-tool feel (think Linear / Vercel dashboard), not marketing.
@@ -113,6 +125,10 @@ Base: `/api/v1`. JSON. Errors: `{ "error": { "code": "string", "message": "strin
 | GET | `/events?type=&agent=&run_id=` | Global activity feed history (live via `/stream`) |
 | GET | `/extensions?kind=skill\|mcp\|plugin`, GET/PUT `/extensions/{id}` | Skills, MCP servers, plugins |
 | POST | `/extensions/{id}/test` | Test an MCP connection |
+| GET | `/secrets` | `[{ name, last4, configured, source: "store"\|"env"\|null, updated_at }]`, never values |
+| PUT | `/secrets/{name}` | `{ "value": string }` → stored encrypted (204) |
+| DELETE | `/secrets/{name}` | Remove stored key (204) |
+| POST | `/secrets/{name}/test` | `{ ok: boolean, message: string }` |
 | GET | `/memory?scope=&scope_id=`, GET `/memory/search?q=` | Memory list/search |
 | GET/PUT/DELETE | `/memory/{id}`, GET `/memory/{id}/revisions` | Memory doc |
 | GET/POST | `/schedules`, PUT/DELETE `/schedules/{id}` | Schedules |
