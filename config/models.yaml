@@ -1,11 +1,14 @@
-# Model IDs must be verified against provider docs; add any provider/capability here.
+# IDs and prices verified against console.groq.com/docs/models and Gemini API pricing (2026-11).
+# Gemini 3.6-flash / 3.8-flash-tts prices rise in early 2027. Add any provider/capability here.
 profiles:
-  - {name: groq-fast, provider: groq, model: llama-3.1-8b-instant, capability: chat, tags: [cheap, fast], key_env: GROQ_API_KEY}
-  - {name: groq-smart, provider: groq, model: openai/gpt-oss-120b, capability: chat, tags: [smart, fast], key_env: GROQ_API_KEY}
-  - {name: gemini-flash, provider: google, model: gemini-2.5-flash, capability: chat, tags: [cheap, smart], key_env: GEMINI_API_KEY}
-  - {name: gemini-pro, provider: google, model: gemini-2.5-pro, capability: chat, tags: [smart], key_env: GEMINI_API_KEY}
-  - {name: gemini-vision, provider: google, model: gemini-2.5-flash, capability: vision, tags: [cheap], key_env: GEMINI_API_KEY}
-  - {name: gemini-image, provider: google, model: gemini-2.5-flash-image, capability: image_gen, tags: [cheap], key_env: GEMINI_API_KEY}
-  - {name: gemini-tts, provider: google, model: gemini-2.5-flash-preview-tts, capability: tts, tags: [cheap], key_env: GEMINI_API_KEY}
-  - {name: groq-stt, provider: groq, model: whisper-large-v3-turbo, capability: stt, tags: [cheap, fast], key_env: GROQ_API_KEY}
-  - {name: gemini-embed, provider: google, model: gemini-embedding-001, capability: embedding, tags: [cheap], key_env: GEMINI_API_KEY, settings: {dimensions: 768}}
+  - {name: groq-fast, provider: groq, model: llama-3.1-8b-instant, capability: chat, tags: [cheap, fast], context_window: 131072, cost: {input_per_mtok: 0.05, output_per_mtok: 0.08}, key_env: GROQ_API_KEY}
+  - {name: groq-smart, provider: groq, model: openai/gpt-oss-120b, capability: chat, tags: [smart, fast], context_window: 131072, cost: {input_per_mtok: 0.15, output_per_mtok: 0.60}, key_env: GROQ_API_KEY}
+  - {name: gemini-lite, provider: google, model: gemini-3.1-flash-lite, capability: chat, tags: [cheap], context_window: 1048576, cost: {input_per_mtok: 0.25, output_per_mtok: 1.50}, key_env: GEMINI_API_KEY}
+  - {name: gemini-flash, provider: google, model: gemini-3.6-flash, capability: chat, tags: [smart, cheap], context_window: 1048576, cost: {input_per_mtok: 0.75, output_per_mtok: 3.75}, key_env: GEMINI_API_KEY}
+  - {name: gemini-pro, provider: google, model: gemini-3.1-pro-preview, capability: chat, tags: [smart], context_window: 1048576, cost: {input_per_mtok: 2.0, output_per_mtok: 12.0}, key_env: GEMINI_API_KEY}
+  - {name: gemini-vision, provider: google, model: gemini-3.1-flash-lite, capability: vision, tags: [cheap], context_window: 1048576, cost: {input_per_mtok: 0.25, output_per_mtok: 1.50}, key_env: GEMINI_API_KEY}
+  - {name: gemini-image, provider: google, model: gemini-3.1-flash-image, capability: image_gen, tags: [cheap], cost: {per_image: 0.067}, key_env: GEMINI_API_KEY}
+  - {name: gemini-tts, provider: google, model: gemini-3.8-flash-tts, capability: tts, tags: [smart], cost: {input_per_mtok: 0.50, output_per_mtok: 9.0}, key_env: GEMINI_API_KEY, settings: {voice: Kore}}
+  - {name: groq-tts, provider: groq, model: canopylabs/orpheus-v1-english, capability: tts, tags: [cheap, fast], context_window: 4000, cost: {per_1k_chars: 0.022}, key_env: GROQ_API_KEY, settings: {voice: autumn}}
+  - {name: groq-stt, provider: groq, model: whisper-large-v3-turbo, capability: stt, tags: [cheap, fast], cost: {per_minute: 0.000667}, key_env: GROQ_API_KEY}
+  - {name: gemini-embed, provider: google, model: gemini-embedding-001, capability: embedding, tags: [cheap], cost: {input_per_mtok: 0.15}, key_env: GEMINI_API_KEY, settings: {dimensions: 768}}
