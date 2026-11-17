@@ -73,7 +73,3 @@ def test_get_provider(tmp_path):
     )
     assert isinstance(get_provider(Settings(sandbox="e2b")), E2BSandboxProvider)
 
-
-async def test_e2b_stub():
-    with pytest.raises(NotImplementedError):
-        await E2BSandboxProvider(Settings()).create("r")

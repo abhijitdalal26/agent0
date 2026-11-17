@@ -1,0 +1,90 @@
+# Run from the repo root:
+#   docker compose --env-file .env.cloud -f infra/docker-compose.cloud.yml up -d --build
+# Only caddy publishes ports; postgres, temporal and api are reachable on the compose network only.
+# --env-file feeds the ${...} values below; env_file feeds the containers. Both point at the same file.
+
+x-app: &app
+  build:
+    context: ..
+  image: agent0:latest
+  env_file: ../.env.cloud
+  restart: unless-stopped
+  environment: &app-env
+    AGENT0_ENV: cloud
+    AGENT0_DATABASE_URL: postgresql://agent0:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/agent0
+    AGENT0_ORCHESTRATOR: temporal
+    AGENT0_TEMPORAL_ADDRESS: temporal:7233
+    AGENT0_SANDBOX: e2b
+    AGENT0_WORKSPACE_ROOT: /data/workspaces
+  volumes:
+    - workspaces:/data/workspaces
+  depends_on:
+    postgres:
+      condition: service_healthy
+    temporal:
+      condition: service_started
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agent0
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: agent0
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent0 -d agent0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Temporal dev server with a SQLite file on a volume: one small container, no schema-setup
+  # step, no second database. temporalio/auto-setup is deprecated upstream and needs Postgres
+  # schema bootstrap plus separate UI/admin containers. The trade-off is that this is a
+  # single-node server meant for light load, which fits one agent on one VM.
+  temporal:
+    image: ${TEMPORAL_IMAGE:-temporalio/temporal:latest}
+    restart: unless-stopped
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--port", "7233", "--headless", "--db-filename", "/data/temporal.db"]
+    user: "0:0" # a fresh named volume is root-owned
+    volumes:
+      - temporal-data:/data
+
+  api:
+    <<: *app
+    command: ["serve"]
+    environment:
+      <<: *app-env
+      AGENT0_API_HOST: 0.0.0.0
+      AGENT0_API_PORT: "8000"
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    healthcheck:
+      disable: true
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  temporal-data:
+  workspaces:
+  caddy-data:
+  caddy-config:
