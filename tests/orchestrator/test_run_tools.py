@@ -56,3 +56,22 @@ def test_describe_error_lists_group_members():
     text = describe_error(group)
     assert "ValueError: bad schema" in text and "RuntimeError: 503 overloaded" in text
     assert describe_error(KeyError("x" * 1000)).__len__() <= 300
+
+
+def test_fallback_chain_reaches_every_provider():
+    from agent0.models.base import ModelProfile
+    from agent0.orchestrator.steps import fallback_chain
+
+    def prof(name, provider):
+        return ModelProfile(name=name, provider=provider, model=name, capability="chat", key_env="K")
+
+    ranked = [
+        prof("a1", "a"),
+        prof("b1", "b"),
+        prof("b2", "b"),
+        prof("a2", "a"),
+        prof("c1", "c"),
+        prof("c2", "c"),
+    ]
+    assert [p.name for p in fallback_chain(ranked)] == ["a1", "b1", "b2", "a2", "c1"]
+    assert [p.name for p in fallback_chain(ranked[:2])] == ["a1", "b1"]

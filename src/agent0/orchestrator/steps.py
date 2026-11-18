@@ -67,8 +67,17 @@ class Report(BaseModel):
 
 def _profiles(rt: Runtime, prefer: str, exclude_provider: str | None = None) -> list[ModelProfile]:
     ranked = rt.router.rank(Capability.CHAT, prefer=prefer, exclude_provider=exclude_provider)  # type: ignore[arg-type]
-    # Long enough to span providers: one overloaded or out-of-quota provider shouldn't fail the run.
-    return [r.profile for r in ranked[:4]]
+    return fallback_chain([r.profile for r in ranked])
+
+
+def fallback_chain(ranked: list[ModelProfile], top: int = 4) -> list[ModelProfile]:
+    # The top picks, plus the best of every other provider: one overloaded, rate-limited or
+    # dead-key provider must not be able to fill the whole chain.
+    chain = ranked[:top]
+    for p in ranked[top:]:
+        if p.provider not in {c.provider for c in chain}:
+            chain.append(p)
+    return chain
 
 
 _REQUIRED_CONFIG = {"command": "cmd", "http": "url", "llm_judge": "rubric"}

@@ -155,6 +155,8 @@ def _brief(payload: dict) -> str:
         "name",
         "ids",
     )
+    if "message" in payload or "evidence" in payload:
+        return " ".join(f"{k}={str(payload[k])[:2000]}" for k in keys if k in payload)
     parts = [f"{k}={str(payload[k])[:120]}" for k in keys if k in payload]
     return " ".join(parts)[:300]
 

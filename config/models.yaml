@@ -4,8 +4,9 @@
 profiles:
   - {name: groq-fast, provider: groq, model: openai/gpt-oss-20b, capability: chat, tags: [cheap, fast], context_window: 131072, cost: {input_per_mtok: 0.075, output_per_mtok: 0.30}, key_env: GROQ_API_KEY}
   - {name: groq-smart, provider: groq, model: openai/gpt-oss-120b, capability: chat, tags: [smart, fast], context_window: 131072, cost: {input_per_mtok: 0.15, output_per_mtok: 0.60}, key_env: GROQ_API_KEY}
-  - {name: gonka-deepseek, provider: openai_compat, model: deepseek-ai/DeepSeek-V4-Flash-0731, capability: chat, tags: [cheap], context_window: 400000, cost: {input_per_mtok: 0.10, output_per_mtok: 0.10}, key_env: GONKA_API_KEY, settings: {base_url: "https://proxy.gonkabroker.com/v1"}}
-  - {name: gonka-glm, provider: openai_compat, model: zai-org/GLM-5.3-Flash, capability: chat, tags: [cheap], context_window: 400000, cost: {input_per_mtok: 0.10, output_per_mtok: 0.10}, key_env: GONKA_API_KEY, settings: {base_url: "https://proxy.gonkabroker.com/v1"}}
+  # Gonka key is paused (401) as of 2026-11-18; set enabled: true once it is re-activated.
+  - {name: gonka-deepseek, provider: openai_compat, model: deepseek-ai/DeepSeek-V4-Flash-0731, capability: chat, tags: [cheap], context_window: 400000, cost: {input_per_mtok: 0.10, output_per_mtok: 0.10}, key_env: GONKA_API_KEY, settings: {base_url: "https://proxy.gonkabroker.com/v1"}, enabled: false}
+  - {name: gonka-glm, provider: openai_compat, model: zai-org/GLM-5.3-Flash, capability: chat, tags: [cheap], context_window: 400000, cost: {input_per_mtok: 0.10, output_per_mtok: 0.10}, key_env: GONKA_API_KEY, settings: {base_url: "https://proxy.gonkabroker.com/v1"}, enabled: false}
   - {name: gemini-lite, provider: google, model: gemini-3.1-flash-lite, capability: chat, tags: [cheap], context_window: 1048576, cost: {input_per_mtok: 0.25, output_per_mtok: 1.50}, key_env: GEMINI_API_KEY}
   - {name: gemini-flash, provider: google, model: gemini-3.6-flash, capability: chat, tags: [smart, cheap], context_window: 1048576, cost: {input_per_mtok: 0.75, output_per_mtok: 3.75}, key_env: GEMINI_API_KEY}
   - {name: gemini-pro, provider: google, model: gemini-3.1-pro-preview, capability: chat, tags: [smart], context_window: 1048576, cost: {input_per_mtok: 2.0, output_per_mtok: 12.0}, key_env: GEMINI_API_KEY, enabled: false}

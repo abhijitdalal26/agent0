@@ -68,3 +68,12 @@ async def test_no_master_key_skips_db(monkeypatch):
 
     monkeypatch.setattr(psycopg_pool, "AsyncConnectionPool", boom)
     await _load_stored_secrets()
+
+
+def test_brief_keeps_errors_and_evidence_whole():
+    from agent0.cli import _brief
+
+    long = "x" * 900
+    assert long in _brief({"message": long})
+    assert long in _brief({"check_id": "facts", "evidence": long})
+    assert len(_brief({"title": long})) <= 300
