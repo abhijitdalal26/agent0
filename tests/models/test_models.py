@@ -227,6 +227,9 @@ def test_models_have_a_request_timeout(monkeypatch):
     from agent0.models.chat import DEFAULT_TIMEOUT_S
 
     monkeypatch.setenv("GROQ_API_KEY", "g")
-    assert build_model(prof("g", "groq", key="GROQ_API_KEY")).settings == {"timeout": DEFAULT_TIMEOUT_S}
-    custom = prof("g", "groq", key="GROQ_API_KEY", settings={"timeout_s": 5})
-    assert build_model(custom).settings == {"timeout": 5.0}
+    from agent0.models.chat import DEFAULT_MAX_TOKENS
+
+    default = build_model(prof("g", "groq", key="GROQ_API_KEY")).settings
+    assert default == {"timeout": DEFAULT_TIMEOUT_S, "max_tokens": DEFAULT_MAX_TOKENS}
+    custom = prof("g", "groq", key="GROQ_API_KEY", settings={"timeout_s": 5, "max_tokens": 100})
+    assert build_model(custom).settings == {"timeout": 5.0, "max_tokens": 100}

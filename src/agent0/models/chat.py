@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
+from pydantic_ai.exceptions import ModelAPIError, OutputTokenLimitExceeded
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.google import GoogleModel
@@ -32,11 +33,16 @@ def api_key(profile: ModelProfile) -> str:
 
 
 DEFAULT_TIMEOUT_S = 90.0
+DEFAULT_MAX_TOKENS = 8192
 
 
 def _settings(p: ModelProfile) -> ModelSettings:
     # Without a timeout a provider that never answers hangs the run, and FallbackModel only moves on errors.
-    return ModelSettings(timeout=float(p.settings.get("timeout_s", DEFAULT_TIMEOUT_S)))
+    # Provider default output limits are small enough that long files hit them before any text comes back.
+    return ModelSettings(
+        timeout=float(p.settings.get("timeout_s", DEFAULT_TIMEOUT_S)),
+        max_tokens=int(p.settings.get("max_tokens", DEFAULT_MAX_TOKENS)),
+    )
 
 
 # Adding a chat provider = one entry here.
@@ -67,4 +73,6 @@ def build_fallback(profiles: Sequence[ModelProfile]) -> Model:
     if not profiles:
         raise ValueError("build_fallback needs at least one profile")
     models = [build_model(p) for p in profiles]
-    return models[0] if len(models) == 1 else FallbackModel(*models)
+    if len(models) == 1:
+        return models[0]
+    return FallbackModel(*models, fallback_on=(ModelAPIError, OutputTokenLimitExceeded))
