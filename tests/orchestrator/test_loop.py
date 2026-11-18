@@ -1,3 +1,5 @@
+import pytest
+
 from agent0.core.types import Budget, RunStatus, Task
 from agent0.orchestrator.loop import Decision, drive
 from agent0.orchestrator.steps import AttemptResult, PendingApproval, Report
@@ -95,3 +97,22 @@ async def test_budget_stops_run():
     steps = FakeSteps([AttemptResult(status="budget", error="usd")], [])
     out = await drive(task(), steps)
     assert out.status == RunStatus.STOPPED and steps.finished is out
+
+
+def test_check_plan_rejects_unrunnable_criteria():
+    from pydantic_ai.exceptions import ModelRetry
+
+    from agent0.orchestrator.steps import check_plan
+    from agent0.verify import Criterion, TaskSpec
+
+    ok = TaskSpec(
+        goal="g",
+        criteria=[
+            Criterion(id="c1", type="command", description="tests pass", config={"cmd": "pytest"}),
+            Criterion(id="c2", type="artifact", description="file exists", config={"path": "a.py"}),
+        ],
+    )
+    assert check_plan(ok) is ok
+    bad = TaskSpec(goal="g", criteria=[Criterion(id="c1", type="command", description="tests pass")])
+    with pytest.raises(ModelRetry, match="c1.*config.cmd"):
+        check_plan(bad)

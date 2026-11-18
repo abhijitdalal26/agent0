@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import ModelRetry, UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
 from agent0.agents.definitions import AgentDef
@@ -67,7 +67,23 @@ class Report(BaseModel):
 
 def _profiles(rt: Runtime, prefer: str, exclude_provider: str | None = None) -> list[ModelProfile]:
     ranked = rt.router.rank(Capability.CHAT, prefer=prefer, exclude_provider=exclude_provider)  # type: ignore[arg-type]
-    return [r.profile for r in ranked[:2]]
+    # Long enough to span providers: one overloaded or out-of-quota provider shouldn't fail the run.
+    return [r.profile for r in ranked[:4]]
+
+
+_REQUIRED_CONFIG = {"command": "cmd", "http": "url", "llm_judge": "rubric"}
+
+
+def check_plan(spec: TaskSpec) -> TaskSpec:
+    # A criterion the verifier can't run fails every attempt, so send it back to the planner instead.
+    problems = [
+        f"criterion {c.id!r} ({c.type}) needs config.{key}"
+        for c in spec.criteria
+        if (key := _REQUIRED_CONFIG.get(str(c.type))) and key not in c.config
+    ]
+    if problems:
+        raise ModelRetry("Fix these criteria: " + "; ".join(problems))
+    return spec
 
 
 def _policy(agent: AgentDef, rt: Runtime) -> Policy:
@@ -133,6 +149,7 @@ class Engine:
         if tools := self._tool_names():
             prompt += f"\n\nThe executor can use these tools: {', '.join(tools)}."
         agent = Agent(build_fallback(profiles), output_type=TaskSpec, instructions=planner.instructions)
+        agent.output_validator(check_plan)
         started = time.monotonic()
         result = await agent.run(prompt)
         await self._record_chat(

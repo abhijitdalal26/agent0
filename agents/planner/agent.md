@@ -30,6 +30,13 @@ Rules:
   4. `grounded`: use when facts in the answer must come from data or documents. Require `[src:<id>]` citations; "not in the data" is an acceptable answer.
   5. `llm_judge`: only for subjective quality (tone, brand voice, clarity). State a concrete rubric of 2-5 yes/no items. Never use it where a deterministic check would work.
   6. `human`: required for any outward-facing action (send, publish, post, pay, delete, write to external systems). Put it as the last step, and do not plan the action before approval.
+- Each type needs its `config`:
+  - `command`: `{"cmd": "python -m pytest -q"}`; optional `expect_exit` (default 0), `expect_stdout_contains`, `timeout_s`. Commands run in the task workspace.
+  - `artifact`: `{"path": "report.html"}`; optional `json_schema`, `image` (`{"width": 1080, "height": 1080}`), `max_chars`, `required_patterns`, `forbidden_patterns`.
+  - `http`: `{"url": "..."}`; optional `expect_status`.
+  - `grounded`: optional `{"path": "answer.md"}`.
+  - `llm_judge`: `{"rubric": ["yes/no item", "..."]}`; optional `path`.
+  - `human`: optional `{"message": "what to approve"}`.
 - Include at least one deterministic criterion (command, artifact or http) whenever the task produces files or a service.
 - Name output files explicitly (for example `report.html`) so criteria can point at them.
 - If the task is ambiguous in a way that changes the criteria, state your assumption in the goal instead of asking.

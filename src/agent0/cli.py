@@ -52,6 +52,10 @@ def _load_env() -> None:
     from dotenv import load_dotenv
 
     load_dotenv(".env", override=False)
+    # Windows consoles default to cp1252, which can't print model output like "→".
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 
 @app.command()
