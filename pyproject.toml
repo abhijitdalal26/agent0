@@ -58,6 +58,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 markers = ["integration: needs Docker/Postgres/API keys"]
+addopts = "-m 'not integration'"
 
 [tool.pyright]
 include = ["src"]

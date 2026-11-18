@@ -72,4 +72,3 @@ def test_get_provider(tmp_path):
         get_provider(Settings(sandbox="docker", workspace_root=tmp_path)), DockerSandboxProvider
     )
     assert isinstance(get_provider(Settings(sandbox="e2b")), E2BSandboxProvider)
-
