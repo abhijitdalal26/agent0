@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from agent0.channels.formatting import CheckLine, render_verdict_table
-from agent0.core.types import RunStatus, Task
+from agent0.core.types import EventType, RunStatus, Task
 from agent0.orchestrator.loop import Decision, Outcome, drive
 from agent0.orchestrator.runtime import Runtime
 from agent0.orchestrator.steps import AttemptResult, Engine, Report
 from agent0.verify import TaskSpec
+
+log = logging.getLogger(__name__)
 
 
 def final_message(task: Task, run_id: str, outcome: Outcome) -> str:
@@ -103,8 +106,21 @@ class LocalOrchestrator:
         self.tasks[task.id] = task
         self.run_tasks[run.id] = task
         steps = EngineSteps(self.engine, task, run.id, self.approvals)
-        self.running[run.id] = asyncio.create_task(drive(task, steps), name=f"run-{run.id}")
+        self.running[run.id] = asyncio.create_task(self._guarded(task, run.id, steps), name=f"run-{run.id}")
         return run
+
+    async def _guarded(self, task: Task, run_id: str, steps: EngineSteps) -> Outcome:
+        # drive() records its own outcomes; this catches what escapes it (e.g. planning) so no run is stuck.
+        try:
+            return await drive(task, steps)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            log.exception("run %s crashed", run_id)
+            message = f"{type(exc).__name__}: {exc}"[:500]
+            await self.rt.events.emit(run_id, EventType.ERROR, {"message": message})
+            await self.engine.set_status(task, run_id, RunStatus.FAILED, "error")
+            return Outcome(status=RunStatus.FAILED, attempts=0, cost_usd=0.0)
 
     async def run_to_end(self, task: Task) -> tuple[str, Outcome]:
         run = await self.submit(task)
@@ -114,7 +130,12 @@ class LocalOrchestrator:
         job = self.running.get(run_id)
         if job and not job.done():
             job.cancel()
-            await self.engine.set_status(self.run_tasks[run_id], run_id, RunStatus.STOPPED, "stopped by user")
+        task = self.run_tasks.get(run_id)
+        if task is None and self.rt.repos and (run := await self.rt.repos.runs.get(run_id)):
+            # Left over from before a restart: nothing is running it, so just record the stop.
+            task = await self.rt.repos.tasks.get(run.task_id)
+        if task is not None:
+            await self.engine.set_status(task, run_id, RunStatus.STOPPED, "stopped by user")
 
     async def retry(self, task_id: str):
         task = self.tasks.get(task_id)

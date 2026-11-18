@@ -93,3 +93,23 @@ async def test_required_criteria_are_kept_and_enforced(runtime):
     _, outcome = await LocalOrchestrator(runtime).run_to_end(task)
     assert outcome.status == RunStatus.FAILED
     assert {v.check_id for v in outcome.report.verdicts} >= {"must", "c1"}
+
+
+async def test_crash_outside_drive_marks_run_failed(runtime, monkeypatch):
+    import agent0.orchestrator.local as local
+
+    async def boom(task, steps):
+        raise RuntimeError("planner exploded")
+
+    monkeypatch.setattr(local, "drive", boom)
+    statuses = []
+
+    async def spy(task, run_id, status, step=None):
+        statuses.append(status)
+
+    orch = LocalOrchestrator(runtime)
+    monkeypatch.setattr(orch.engine, "set_status", spy)
+    _, outcome = await orch.run_to_end(Task(title="t", prompt="p"))
+    assert outcome.status == RunStatus.FAILED and statuses == [RunStatus.FAILED]
+    await orch.stop(next(iter(orch.running)))
+    assert statuses[-1] == RunStatus.STOPPED
