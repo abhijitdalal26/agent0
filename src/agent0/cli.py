@@ -50,7 +50,13 @@ def run(
     prompt = prompt or spec.get("prompt") or ""
     if not prompt:
         raise typer.BadParameter("give a prompt or --task-file")
-    _run_async(_run(prompt, spec.get("agent", agent), retries, max_usd, sandbox, spec))
+    from agent0.models.base import NoProfileAvailable
+
+    try:
+        _run_async(_run(prompt, spec.get("agent", agent), retries, max_usd, sandbox, spec))
+    except NoProfileAvailable as e:
+        console.print(f"[red]No model available:[/red] {e}. Set provider keys in .env, then `agent0 models`.")
+        raise typer.Exit(1) from None
 
 
 async def _run(
