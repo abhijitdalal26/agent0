@@ -12,6 +12,7 @@ from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.groq import GroqProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
 
 from agent0.models.base import ModelProfile
 from agent0.models.registry import resolve_secret
@@ -30,15 +31,26 @@ def api_key(profile: ModelProfile) -> str:
     return key
 
 
+DEFAULT_TIMEOUT_S = 90.0
+
+
+def _settings(p: ModelProfile) -> ModelSettings:
+    # Without a timeout a provider that never answers hangs the run, and FallbackModel only moves on errors.
+    return ModelSettings(timeout=float(p.settings.get("timeout_s", DEFAULT_TIMEOUT_S)))
+
+
 # Adding a chat provider = one entry here.
 CHAT_BUILDERS: dict[str, Callable[[ModelProfile, str], Model]] = {
-    "groq": lambda p, key: GroqModel(p.model, provider=GroqProvider(api_key=key)),
-    "google": lambda p, key: GoogleModel(p.model, provider=GoogleProvider(api_key=key)),
+    "groq": lambda p, key: GroqModel(p.model, provider=GroqProvider(api_key=key), settings=_settings(p)),
+    "google": lambda p, key: GoogleModel(
+        p.model, provider=GoogleProvider(api_key=key), settings=_settings(p)
+    ),
     "openai_compat": lambda p, key: OpenAIChatModel(
         p.model,
         provider=OpenAIProvider(base_url=p.settings["base_url"], api_key=key),
         # Brokers such as Gonka reject $defs/$ref in tool schemas.
         profile=OpenAIModelProfile(json_schema_transformer=InlineDefsJsonSchemaTransformer),
+        settings=_settings(p),
     ),
 }
 
