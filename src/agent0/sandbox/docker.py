@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 from typing import Any
 
 import docker
@@ -10,7 +12,11 @@ from agent0.config import Settings
 from agent0.sandbox.base import ExecResult
 from agent0.sandbox.paths import WorkspaceFiles
 
+log = logging.getLogger(__name__)
+
 CONTAINER_WORKSPACE = "/workspace"
+LOCAL_IMAGE = "agent0-sandbox:latest"
+FALLBACK_IMAGE = "python:3.13-slim"
 _TIMEOUT_EXIT_CODES = {124, 137}
 
 
@@ -94,12 +100,22 @@ class DockerSandboxProvider:
         files = WorkspaceFiles(host_dir, virtual_root=CONTAINER_WORKSPACE)
 
         def start() -> Any:
+            name = image
             try:
-                self.client.images.get(image)
+                self.client.images.get(name)
             except ImageNotFound:
-                self.client.images.pull(image)
+                if name == LOCAL_IMAGE:
+                    log.warning("%s not built (infra/sandbox.Dockerfile); using %s", name, FALLBACK_IMAGE)
+                    name = FALLBACK_IMAGE
+                    with contextlib.suppress(ImageNotFound):
+                        self.client.images.get(name)
+                        return run(name)
+                self.client.images.pull(name)
+            return run(name)
+
+        def run(name: str) -> Any:
             return self.client.containers.run(
-                image,
+                name,
                 command=["sleep", "infinity"],
                 name=f"agent0-{run_id}",
                 detach=True,

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     temporal_namespace: str = "default"
     task_queue: str = "agent0"
     sandbox: Literal["docker", "local", "e2b"] = "docker"
-    sandbox_image: str = "python:3.13-slim"
+    sandbox_image: str = "agent0-sandbox:latest"
     workspace_root: Path = Path(".agent0/workspaces")
     config_dir: Path = Path("config")
     skills_dirs: list[Path] = [Path("skills"), Path.home() / ".agent0" / "skills"]

@@ -24,6 +24,21 @@ async def test_container_options(tmp_path):
         await sb.read_file("/etc/passwd")
 
 
+async def test_unbuilt_local_image_falls_back(tmp_path):
+    from docker.errors import ImageNotFound
+
+    def get(name):
+        if "agent0" in name:
+            raise ImageNotFound(name)
+
+    client = MagicMock()
+    client.images.get.side_effect = get
+    provider = DockerSandboxProvider(Settings(workspace_root=tmp_path), client=client)
+    await provider.create("r1")
+    assert client.containers.run.call_args.args[0] == "python:3.13-slim"
+    client.images.pull.assert_not_called()
+
+
 async def test_exec_mapping(tmp_path):
     client = MagicMock()
     provider = DockerSandboxProvider(Settings(workspace_root=tmp_path), client=client)
