@@ -20,6 +20,33 @@ def _run_async(coro: Coroutine[Any, Any, None]) -> None:
         asyncio.run(coro)
 
 
+async def _load_stored_secrets() -> None:
+    # Keys added in the dashboard live encrypted in Postgres; without a DB, env vars alone are fine.
+    from psycopg.rows import dict_row
+    from psycopg_pool import AsyncConnectionPool
+
+    from agent0.config import get_settings
+    from agent0.secrets.store import PgSecretStore
+
+    settings = get_settings()
+    if not settings.secret_key:
+        return
+    pool = AsyncConnectionPool(
+        settings.database_url, min_size=1, max_size=1, open=False, kwargs={"row_factory": dict_row}
+    )
+    try:
+        await pool.open(wait=True, timeout=3)
+        store = PgSecretStore(pool, settings.secret_key)  # type: ignore[arg-type]
+        await store.load()
+        from agent0.models.registry import set_secret_resolver
+
+        set_secret_resolver(store.resolve)
+    except Exception:
+        return
+    finally:
+        await pool.close()
+
+
 @app.callback()
 def _load_env() -> None:
     from dotenv import load_dotenv
@@ -68,6 +95,7 @@ async def _run(
     from agent0.orchestrator.local import LocalOrchestrator, final_message
     from agent0.orchestrator.runtime import build_runtime
 
+    await _load_stored_secrets()
     settings = get_settings()
     if sandbox:
         settings = settings.model_copy(update={"sandbox": sandbox})
@@ -207,6 +235,7 @@ def models() -> None:
     from agent0.config import get_settings
     from agent0.models.registry import ModelRegistry
 
+    _run_async(_load_stored_secrets())
     reg = ModelRegistry.load(get_settings().config_dir / "models.yaml")
     ok = {p.name for p in reg.available()}
     for p in reg.all():
