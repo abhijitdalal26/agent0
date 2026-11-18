@@ -6,7 +6,7 @@
     {"id": "files", "type": "artifact", "description": "ads.md exists with 3 variants",
      "config": {"path": "ads.md", "required_patterns": ["## Variant 1", "## Variant 2", "## Variant 3"]}},
     {"id": "banned", "type": "artifact", "description": "no banned claims",
-     "config": {"path": "ads.md", "forbidden_patterns": ["guarantee", "cure", "lose \\d+ ?(lbs|pounds)", "FDA[- ]approved", "clinically proven", "no (doctor|exam) (needed|required)", "100% effective"]}},
+     "config": {"path": "ads.md", "forbidden_patterns": ["\\bguarantee", "\\bcur(e|es|ed|ing)\\b","lose \\d+ ?(lbs|pounds)", "FDA[- ]approved", "clinically proven", "no (doctor|exam) (needed|required)", "100% effective"]}},
     {"id": "disclaimer", "type": "artifact", "description": "required disclaimer present",
      "config": {"path": "ads.md", "required_patterns": ["(clinicians decide whether treatment is right for you|Rx may apply\\. See terms\\.)", "Not available in all states|See terms"]}},
     {"id": "hero", "type": "artifact", "description": "hero image is 1080x1080",
