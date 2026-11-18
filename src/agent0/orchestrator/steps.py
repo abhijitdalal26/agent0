@@ -74,6 +74,13 @@ def _profiles(rt: Runtime, prefer: str, exclude_provider: str | None = None) -> 
 _REQUIRED_CONFIG = {"command": "cmd", "http": "url", "llm_judge": "rubric"}
 
 
+def describe_error(exc: BaseException, limit: int = 300) -> str:
+    text = f"{type(exc).__name__}: {exc}"[:limit]
+    if isinstance(exc, BaseExceptionGroup):
+        text += " | " + " | ".join(describe_error(e, limit) for e in exc.exceptions)
+    return text
+
+
 def check_plan(spec: TaskSpec) -> TaskSpec:
     # A criterion the verifier can't run fails every attempt, so send it back to the planner instead.
     problems = [
@@ -270,8 +277,9 @@ class Engine:
             await self.rt.events.emit(run_id, EventType.BUDGET_EXCEEDED, {"reason": str(exc)})
             result = AttemptResult(status="budget", error=str(exc))
         except Exception as exc:
-            await self.rt.events.emit(run_id, EventType.ERROR, {"message": f"{type(exc).__name__}: {exc}"})
-            result = AttemptResult(status="error", error=f"{type(exc).__name__}: {exc}")
+            message = describe_error(exc)
+            await self.rt.events.emit(run_id, EventType.ERROR, {"message": message})
+            result = AttemptResult(status="error", error=message)
         finally:
             await sandbox.destroy()
         result.sources = deps.sources

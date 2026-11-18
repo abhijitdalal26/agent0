@@ -47,3 +47,12 @@ async def test_wrapped_tools_keep_their_schema():
     tool = seen["search_knowledge"]
     assert set(tool.parameters_json_schema["properties"]) == {"source", "query", "limit"}  # type: ignore[attr-defined]
     assert "Cite every fact" in (tool.description or "")  # type: ignore[attr-defined]
+
+
+def test_describe_error_lists_group_members():
+    from agent0.orchestrator.steps import describe_error
+
+    group = ExceptionGroup("all failed", [ValueError("bad schema"), RuntimeError("503 overloaded")])
+    text = describe_error(group)
+    assert "ValueError: bad schema" in text and "RuntimeError: 503 overloaded" in text
+    assert describe_error(KeyError("x" * 1000)).__len__() <= 300
