@@ -113,3 +113,24 @@ async def test_crash_outside_drive_marks_run_failed(runtime, monkeypatch):
     assert outcome.status == RunStatus.FAILED and statuses == [RunStatus.FAILED]
     await orch.stop(next(iter(orch.running)))
     assert statuses[-1] == RunStatus.STOPPED
+
+
+async def test_hallucinated_tool_is_corrected_not_fatal(tmp_path, monkeypatch):
+    seen: dict[str, int] = {}
+
+    def flaky(messages, info: AgentInfo) -> ModelResponse:
+        phase = "plan" if info.output_tools else "exec"
+        seen[phase] = seen.get(phase, 0) + 1
+        if seen[phase] <= 2:
+            return ModelResponse(parts=[ToolCallPart("json", {"goal": "x"})])
+        return brain(messages, info)
+
+    monkeypatch.setenv("GROQ_API_KEY", "test")
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    monkeypatch.setattr(steps_mod, "build_fallback", lambda profiles: FunctionModel(flaky))
+    monkeypatch.setattr(steps_mod, "build_model", lambda profile: FunctionModel(brain))
+    settings = Settings(sandbox="local", workspace_root=tmp_path / "ws", skills_dirs=[], plugins_dirs=[])
+    rt = build_runtime(settings, events=MemoryEventSink())
+    _, outcome = await LocalOrchestrator(rt).run_to_end(Task(title="hello", prompt="Write hello.txt"))
+    assert outcome.status == RunStatus.SUCCEEDED, outcome
+    assert set(seen) == {"plan", "exec"}

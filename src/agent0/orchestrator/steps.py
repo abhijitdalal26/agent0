@@ -80,6 +80,10 @@ def fallback_chain(ranked: list[ModelProfile], top: int = 4) -> list[ModelProfil
     return chain
 
 
+# Open models (gpt-oss especially) sometimes call a tool that doesn't exist, e.g. "json"; one retry
+# with pydantic-ai's "unknown tool" reply is usually enough, but the default of 1 ends the run.
+MODEL_RETRIES = 3
+
 _REQUIRED_CONFIG = {"command": "cmd", "http": "url", "llm_judge": "rubric"}
 
 
@@ -164,7 +168,12 @@ class Engine:
             prompt += f"\n\n<memory>\n{memory}\n</memory>"
         if tools := self._tool_names():
             prompt += f"\n\nThe executor can use these tools: {', '.join(tools)}."
-        agent = Agent(build_fallback(profiles), output_type=TaskSpec, instructions=planner.instructions)
+        agent = Agent(
+            build_fallback(profiles),
+            output_type=TaskSpec,
+            instructions=planner.instructions,
+            retries=MODEL_RETRIES,
+        )
         agent.output_validator(check_plan)
         started = time.monotonic()
         result = await agent.run(prompt)
@@ -256,6 +265,7 @@ class Engine:
             deps_type=RunDeps,
             instructions=agent_def.instructions,
             toolsets=toolsets,
+            retries=MODEL_RETRIES,
         )
         started = time.monotonic()
         result: AttemptResult
