@@ -90,7 +90,7 @@ def test_rejects_unknown_names_and_disabled_store(env):
 def test_test_endpoint_unconfigured_and_failing_tester(env):
     assert env.client.post(f"{BASE}/{KEY_ENV}/test").status_code == 409
 
-    async def boom(name, value, provider):
+    async def boom(name, value, profile):
         raise RuntimeError(f"leaked {value}")
 
     env.deps.secret_tester = boom
@@ -117,3 +117,29 @@ def test_rate_limiter_window():
         assert e.status == 429
     now[0] = 11
     lim.check("k")
+
+
+async def test_default_tester_openai_compatible(monkeypatch):
+    import httpx
+
+    from agent0.api.testers import default_tester
+    from agent0.core.types import Capability
+    from agent0.models.base import ModelProfile
+
+    seen = {}
+
+    async def fake_get(self, url, headers):
+        seen["url"] = url
+        return httpx.Response(200, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    profile = ModelProfile(
+        name="g",
+        provider="openai_compat",
+        model="m",
+        capability=Capability.CHAT,
+        key_env="GONKA_API_KEY",
+        settings={"base_url": "https://broker.test/v1/"},
+    )
+    assert await default_tester("GONKA_API_KEY", "k", profile) == (True, "key accepted")
+    assert seen["url"] == "https://broker.test/v1/models"

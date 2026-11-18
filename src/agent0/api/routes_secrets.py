@@ -91,9 +91,9 @@ async def test_secret(name: str, deps: Deps) -> dict[str, Any]:
         raise ApiError(409, "not_configured", f"{name} is not configured")
     if deps.secret_tester is None:
         raise ApiError(501, "not_implemented", "no secret tester configured")
-    provider = next((p.provider for p in deps.registry.all() if p.key_env == name), None)
+    profile = next((p for p in deps.registry.all() if p.key_env == name), None)
     try:
-        ok, message = await deps.secret_tester(name, value, provider)
+        ok, message = await deps.secret_tester(name, value, profile)
     except Exception as exc:
         ok, message = False, f"test failed: {type(exc).__name__}"
     return {"ok": ok, "message": message.replace(value, "***")}

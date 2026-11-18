@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import httpx
 
+from agent0.models.base import ModelProfile
 from agent0.secrets import TELEGRAM_SECRET
 
 _TIMEOUT = 10.0
 
 
-async def default_tester(name: str, value: str, provider: str | None) -> tuple[bool, str]:
+async def default_tester(name: str, value: str, profile: ModelProfile | None) -> tuple[bool, str]:
+    provider = profile.provider if profile else None
     if name == TELEGRAM_SECRET:
         url, headers = f"https://api.telegram.org/bot{value}/getMe", {}
     elif provider == "groq":
@@ -15,6 +17,9 @@ async def default_tester(name: str, value: str, provider: str | None) -> tuple[b
     elif provider == "google":
         url = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1"
         headers = {"x-goog-api-key": value}
+    elif provider == "openai_compat" and profile and profile.settings.get("base_url"):
+        url = f"{profile.settings['base_url'].rstrip('/')}/models"
+        headers = {"Authorization": f"Bearer {value}"}
     else:
         return False, f"no test is available for provider {provider!r}"
     try:

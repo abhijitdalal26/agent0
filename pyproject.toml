@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.11",
     "pydantic-settings>=2.6",
-    "pydantic-ai-slim[google,groq,mcp]>=1.0",
+    "pydantic-ai-slim[google,groq,mcp,openai]>=1.0",
     "groq>=0.30",
     "google-genai>=1.30",
     "temporalio>=1.18",

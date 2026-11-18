@@ -143,6 +143,15 @@ def test_build_model(monkeypatch):
         build_model(groq)
 
 
+def test_build_openai_compatible(monkeypatch):
+    monkeypatch.setenv("GONKA_API_KEY", "k")
+    p = prof(
+        "deepseek", "openai_compat", key="GONKA_API_KEY", settings={"base_url": "https://broker.test/v1"}
+    )
+    model = build_model(p)
+    assert model.model_name == "deepseek" and "broker.test" in model.base_url
+
+
 @pytest.fixture
 def fake_adapters(monkeypatch):
     calls = []

@@ -6,8 +6,10 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.groq import GroqModel
+from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.groq import GroqProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from agent0.models.base import ModelProfile
 from agent0.models.registry import resolve_secret
@@ -30,6 +32,9 @@ def api_key(profile: ModelProfile) -> str:
 CHAT_BUILDERS: dict[str, Callable[[ModelProfile, str], Model]] = {
     "groq": lambda p, key: GroqModel(p.model, provider=GroqProvider(api_key=key)),
     "google": lambda p, key: GoogleModel(p.model, provider=GoogleProvider(api_key=key)),
+    "openai_compat": lambda p, key: OpenAIChatModel(
+        p.model, provider=OpenAIProvider(base_url=p.settings["base_url"], api_key=key)
+    ),
 }
 
 

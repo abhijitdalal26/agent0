@@ -53,8 +53,8 @@ class Env:
         skill.mkdir(parents=True)
         (skill / "SKILL.md").write_text("---\nname: demo\ndescription: a demo skill\n---\nbody text\n")
 
-        async def tester(name: str, value: str, provider: str | None):
-            self.tested.append((name, provider))
+        async def tester(name: str, value: str, profile):
+            self.tested.append((name, profile.provider if profile else None))
             return True, f"ok {value}"
 
         self.deps = ApiDeps(

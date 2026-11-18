@@ -12,6 +12,7 @@ from agent0.core.types import Event, Run, Task
 from agent0.extensions.mcp import McpRegistry
 from agent0.extensions.plugins import PluginManager
 from agent0.extensions.skills import SkillLibrary
+from agent0.models.base import ModelProfile
 from agent0.models.registry import ModelRegistry
 from agent0.models.router import Router
 from agent0.secrets import SecretStore
@@ -29,7 +30,7 @@ class EventStream(Protocol):
 
 
 # (secret name, plaintext value, provider of the profiles using it) -> (ok, message)
-SecretTester = Callable[[str, str, str | None], Awaitable[tuple[bool, str]]]
+SecretTester = Callable[[str, str, ModelProfile | None], Awaitable[tuple[bool, str]]]
 
 
 @dataclass
