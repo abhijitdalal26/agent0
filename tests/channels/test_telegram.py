@@ -162,6 +162,7 @@ async def test_guard_refuses_unknown_user_and_runs_nothing(channel, bot):
     await channel._guard(handler, _message("/task x", user=STRANGER), {"event_from_user": STRANGER})
     handler.assert_not_awaited()
     assert "private" in bot.send_message.await_args.args[1]
+    assert str(STRANGER.id) in bot.send_message.await_args.args[1]
 
 
 async def test_guard_passes_allowed_user_by_username(channel):

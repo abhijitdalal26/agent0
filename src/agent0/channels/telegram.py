@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
@@ -44,6 +45,8 @@ HELP_TEXT = (
     "/stop &lt;run id&gt; - stop a run\n"
     "/help - show this message"
 )
+
+log = logging.getLogger(__name__)
 
 
 class ParsedCommand(NamedTuple):
@@ -170,7 +173,10 @@ class TelegramChannel:
         user = getattr(event, "from_user", None)
         if user is not None and is_allowed(user.id, user.username, self._allowed):
             return await handler(event, data)
-        refusal = "Sorry, this bot is private. Ask the owner to add you to the allowed users."
+        # Showing the id lets the owner add themselves to AGENT0_TELEGRAM_ALLOWED_USERS on first contact.
+        uid = user.id if user is not None else "unknown"
+        log.info("telegram: refused user id=%s", uid)
+        refusal = f"Sorry, this bot is private. Your Telegram user id is {uid}; ask the owner to allow it."
         if isinstance(event, CallbackQuery):
             await self._bot.answer_callback_query(event.id, text=refusal, show_alert=True)
         elif isinstance(event, Message):
