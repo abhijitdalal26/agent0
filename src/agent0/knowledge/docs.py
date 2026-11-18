@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 from collections.abc import Sequence
@@ -106,6 +107,15 @@ class DocsKnowledgeSource:
         self.root = root
         self.patterns = tuple(patterns)
         self.max_chars = max_chars
+        self._indexed = False
+        self._lock = asyncio.Lock()
+
+    async def _ensure_indexed(self) -> None:
+        if self._indexed or self.root is None:
+            return
+        async with self._lock:
+            if not self._indexed:
+                await self.ingest()
 
     async def ingest(self, root: Path | None = None) -> int:
         root = root or self.root
@@ -131,9 +141,11 @@ class DocsKnowledgeSource:
                         " metadata = EXCLUDED.metadata",
                         (r.source_id, self.name, r.content, Jsonb(r.metadata)),
                     )
+        self._indexed = True
         return len(keep)
 
     async def search(self, query: str, limit: int = 5) -> list[SourceRecord]:
+        await self._ensure_indexed()
         tsq = or_tsquery(query)
         if not tsq:
             return []
@@ -147,6 +159,7 @@ class DocsKnowledgeSource:
             return [SourceRecord.model_validate(r) for r in await cur.fetchall()]
 
     async def get(self, source_id: str) -> SourceRecord | None:
+        await self._ensure_indexed()
         async with self.pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT id AS source_id, source, content, metadata FROM knowledge_chunks"
@@ -181,8 +194,14 @@ class InMemoryDocsSource:
         self.chunks = {r.source_id: r for recs in files.values() for r in recs}
         return len(self.chunks)
 
+    async def _ensure_indexed(self) -> None:
+        if not self.chunks and self.root is not None:
+            await self.ingest()
+
     async def search(self, query: str, limit: int = 5) -> list[SourceRecord]:
+        await self._ensure_indexed()
         return rank_by_keywords(query, self.chunks.values(), lambda r: r.content)[:limit]
 
     async def get(self, source_id: str) -> SourceRecord | None:
+        await self._ensure_indexed()
         return self.chunks.get(source_id)

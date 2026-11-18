@@ -56,3 +56,11 @@ def test_registry_loads_docs_and_sql(tmp_path):
     sources = load_sources(tmp_path / "config" / "knowledge.yaml", env={"WH_URL": "postgresql://ro@h/db"})
     assert sources["handbook"].kind == "docs" and sources["wh"].kind == "sql"
     assert load_sources(tmp_path / "missing.yaml") == {}
+
+
+async def test_search_indexes_lazily_on_first_use(tmp_path):
+    (tmp_path / "facts.md").write_text("# Pricing\nThe oral program costs $49 per month.", encoding="utf-8")
+    src = InMemoryDocsSource("kb", tmp_path)
+    hits = await src.search("oral program price")
+    assert hits and hits[0].source_id.startswith("doc:kb:facts.md#")
+    assert await src.get(hits[0].source_id) is not None

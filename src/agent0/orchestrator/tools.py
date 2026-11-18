@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import functools
+import io
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Any
 
+import httpx
+from PIL import Image, UnidentifiedImageError
 from pydantic_ai import RunContext
 from pydantic_ai.toolsets import FunctionToolset
 
@@ -21,6 +27,39 @@ class RunDeps(ToolDeps):
     router: Router | None = None
     meter: UsageMeter | None = None
     artifacts: list[str] = field(default_factory=list)
+
+
+def _tool_errors_to_text[**P](fn: Callable[P, Awaitable[str]]) -> Callable[P, Awaitable[str]]:
+    # A bad source name or a failed provider call should reach the model as a result it can react to,
+    # not abort the whole attempt.
+    @functools.wraps(fn)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> str:
+        try:
+            return await fn(*args, **kwargs)
+        except (ValueError, RuntimeError, httpx.HTTPError) as e:
+            return f"error: {e}"
+
+    return wrapper
+
+
+def fit_image(data: bytes, size: str, path: str) -> bytes:
+    """Resize/crop to exactly WxH and encode by the path's extension; providers only honour aspect ratio."""
+    try:
+        w, h = (int(x) for x in size.lower().split("x"))
+        img = Image.open(io.BytesIO(data))
+    except (ValueError, UnidentifiedImageError):
+        return data
+    fmt = {".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}.get(PurePosixPath(path).suffix.lower(), "PNG")
+    if img.size == (w, h) and img.format == fmt:
+        return data
+    scale = max(w / img.width, h / img.height)
+    img = img.convert("RGB" if fmt == "JPEG" else "RGBA").resize(
+        (max(w, round(img.width * scale)), max(h, round(img.height * scale))), Image.Resampling.LANCZOS
+    )
+    left, top = (img.width - w) // 2, (img.height - h) // 2
+    out = io.BytesIO()
+    img.crop((left, top, left + w, top + h)).save(out, format=fmt)
+    return out.getvalue()
 
 
 def _render(records: list[SourceRecord]) -> str:
@@ -47,17 +86,20 @@ def _source(deps: RunDeps, name: str) -> KnowledgeSource:
     return deps.knowledge[name]
 
 
+@_tool_errors_to_text
 async def list_sources(ctx: RunContext[RunDeps]) -> str:
     """List connected knowledge sources (databases, document sets) you can read facts from."""
     return "\n".join(f"{n} ({s.kind})" for n, s in ctx.deps.knowledge.items()) or "No sources connected."
 
 
+@_tool_errors_to_text
 async def search_knowledge(ctx: RunContext[RunDeps], source: str, query: str, limit: int = 5) -> str:
     """Search a document source. Cite every fact you use as [src:<id>] exactly as shown."""
     records = await _source(ctx.deps, source).search(query, limit=min(limit, 10))
     return await _read(ctx, source, records, query)
 
 
+@_tool_errors_to_text
 async def query_sql(ctx: RunContext[RunDeps], source: str, sql: str) -> str:
     """Run one read-only SELECT on a SQL source. Cite rows you use as [src:<id>]."""
     src = _source(ctx.deps, source)
@@ -73,18 +115,20 @@ async def _media_profile(deps: RunDeps, capability: Capability, prefer: str):
     return deps.router.pick(capability, prefer=prefer)  # type: ignore[arg-type]
 
 
+@_tool_errors_to_text
 async def generate_image(
     ctx: RunContext[RunDeps], prompt: str, path: str, size: str = "1024x1024", prefer: str = "cheap"
 ) -> str:
     """Generate an image with the best available image model and save it in the workspace."""
     deps = ctx.deps
     profile = await _media_profile(deps, Capability.IMAGE_GEN, prefer)
-    data = await media.generate_image(profile, prompt, size, meter=deps.meter)
+    data = fit_image(await media.generate_image(profile, prompt, size, meter=deps.meter), size, path)
     await deps.sandbox.write_file(path, data)
     deps.artifacts.append(path)
     return f"saved {path} ({len(data)} bytes) using {profile.name}"
 
 
+@_tool_errors_to_text
 async def text_to_speech(
     ctx: RunContext[RunDeps], text: str, path: str, voice: str | None = None, prefer: str = "cheap"
 ) -> str:
@@ -97,6 +141,7 @@ async def text_to_speech(
     return f"saved {path} ({len(data)} bytes) using {profile.name}"
 
 
+@_tool_errors_to_text
 async def transcribe_audio(ctx: RunContext[RunDeps], path: str) -> str:
     """Transcribe an audio file from the workspace to text."""
     deps = ctx.deps
