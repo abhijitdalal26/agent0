@@ -160,6 +160,34 @@ async def test_run_event_chain_verify(env):
     assert env.client.get(f"{BASE}/runs/nope/verify").status_code == 404
 
 
+async def test_run_receipt_is_signed(env):
+    import hashlib
+    import hmac
+    import json
+
+    run = await env.repos.seed_run()
+    sink = MemoryEventSink()
+    await sink.emit(run.id, EventType.RUN_STARTED, {"task_id": run.task_id})
+    env.repos.events.rows.extend(sink.events)
+
+    body = env.client.get(f"{BASE}/runs/{run.id}/receipt").json()
+    assert body["kind"] == "agent0.run_receipt"
+    assert body["audit"] == {
+        "chain_ok": True,
+        "events": 1,
+        "bad_seq": None,
+        "head_hash": sink.events[0].hash,
+    }
+    assert body["run"]["id"] == run.id and body["task"]["id"] == run.task_id
+
+    signature = body.pop("signature")
+    assert signature.startswith("hmac-sha256:")
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
+    expected = hmac.new(API_KEY.encode(), canonical.encode(), hashlib.sha256).hexdigest()
+    assert signature == f"hmac-sha256:{expected}"
+    assert env.client.get(f"{BASE}/runs/nope/receipt").status_code == 404
+
+
 async def test_approvals(env):
     run = await env.repos.seed_run(RunStatus.WAITING_APPROVAL)
     row = env.repos.add_approval(run.id)

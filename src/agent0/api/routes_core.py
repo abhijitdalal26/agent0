@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import mimetypes
 from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -253,6 +256,36 @@ async def verify_run_events(run_id: str, deps: Deps) -> dict[str, Any]:
         "bad_seq": bad_seq,
         "head_hash": head,
     }
+
+
+@router.get("/runs/{run_id}/receipt")
+async def run_receipt(run_id: str, deps: Deps) -> dict[str, Any]:
+    """Signed audit bundle: run summary, spec, verdicts and hash-chain state, HMAC-sealed."""
+    run = await _get_run(deps, run_id)
+    spec, verdicts, total, passed = await _checks(deps, run)
+    task = await deps.repos.tasks.get(run.task_id)
+    events = await deps.repos.events.list(run_id, limit=MAX_SCAN)
+    ok, bad_seq = verify_chain(events)
+    receipt = {
+        "version": 1,
+        "kind": "agent0.run_receipt",
+        "generated_at": iso(utcnow()),
+        "run": run_out(run, total, passed),
+        "task": task_out(task, run.attempt) if task is not None else None,
+        "spec": spec.model_dump(mode="json") if spec is not None else None,
+        "verdicts": verdicts,
+        "artifacts": [artifact_out(a) for a in await deps.repos.artifacts.list(run_id)],
+        "audit": {
+            "chain_ok": ok,
+            "events": len(events),
+            "bad_seq": bad_seq,
+            "head_hash": events[-1].hash if events else None,
+        },
+    }
+    key = (deps.settings.secret_key or deps.settings.api_key).encode()
+    body = json.dumps(receipt, sort_keys=True, separators=(",", ":"), default=str)
+    receipt["signature"] = "hmac-sha256:" + hmac.new(key, body.encode(), hashlib.sha256).hexdigest()
+    return receipt
 
 
 @router.post("/runs/{run_id}/stop")

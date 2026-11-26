@@ -3,8 +3,8 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Cpu, FolderOpen, RotateCcw, ShieldAlert, ShieldCheck, ShieldX, Square } from "lucide-react";
-import { getRun, getRunArtifacts, getRunCriteriaAndVerdicts, getRunEvents, getRunVerify, retryTask, stopRun } from "@/lib/api";
+import { ArrowLeft, Cpu, Download, FolderOpen, RotateCcw, ShieldAlert, ShieldCheck, ShieldX, Square } from "lucide-react";
+import { getRun, getRunArtifacts, getRunCriteriaAndVerdicts, getRunEvents, getRunReceipt, getRunVerify, retryTask, stopRun } from "@/lib/api";
 import { useEventStream } from "@/lib/sse";
 import type { Artifact, Criterion, Run, RunEvent, RunVerify, Task, Verdict } from "@/types";
 import { formatCurrency, formatTokens } from "@/lib/utils";
@@ -151,6 +151,20 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     }
   };
 
+  const downloadReceipt = async () => {
+    try {
+      const receipt = await getRunReceipt(runId);
+      const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `agent0-receipt-${runId.slice(0, 8)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      setError("Could not build the audit receipt.");
+    }
+  };
+
   const retry = async () => {
     if (!run) return;
     setBusy("retry");
@@ -242,6 +256,13 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
                 <ShieldX className="w-3.5 h-3.5" />
               )}
               {verifyBusy ? "Verifying…" : verify === null ? "Verify trail" : verify.ok ? `Chain intact · ${verify.events}` : `Broken @ seq ${verify.bad_seq}`}
+            </button>
+            <button
+              onClick={downloadReceipt}
+              title="Download a signed audit receipt for this run"
+              className="px-3 py-2 sm:py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-card border border-border hover:bg-secondary rounded-lg flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" />Receipt
             </button>
             <button
               onClick={() => artifactsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}

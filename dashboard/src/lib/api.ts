@@ -282,6 +282,10 @@ export async function getRunVerify(runId: string): Promise<RunVerify> {
   return apiFetch<RunVerify>(`/runs/${enc(runId)}/verify`);
 }
 
+export async function getRunReceipt(runId: string): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(`/runs/${enc(runId)}/receipt`);
+}
+
 export async function stopRun(runId: string): Promise<{ success: boolean }> {
   await apiFetch(`/runs/${enc(runId)}/stop`, post());
   return { success: true };
