@@ -1,7 +1,7 @@
 {
   "title": "Northwind oral program Instagram ads",
   "prompt": "Write 3 Instagram ad variants for the Northwind Oral Program, launching Monday. Use only facts from the northwind knowledge source and cite them as [src:<id>]. Follow the ad-compliance skill. Save the variants to ads.md (one '## Variant N' section each, primary text under 125 characters) and a square 1080x1080 hero image to hero.png.",
-  "agent": "executor",
+  "agent": "marketer",
   "criteria": [
     {"id": "files", "type": "artifact", "description": "ads.md exists with 3 variants",
      "config": {"path": "ads.md", "required_patterns": ["## Variant 1", "## Variant 2", "## Variant 3"]}},

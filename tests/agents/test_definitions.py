@@ -35,6 +35,8 @@ def test_parse_full(tmp_path: Path):
     assert a.policy == {"x": 1}
     assert a.instructions == "Be brief."
     assert a.effective_budget(Budget(max_steps=40)).max_steps == 5
+    assert a.effective_budget(Budget(max_steps=3)).max_steps == 3
+    assert a.effective_budget(Budget(max_steps=40)).max_usd == Budget().max_usd
 
 
 def test_defaults_and_errors(tmp_path: Path):
@@ -59,6 +61,6 @@ def test_catalog_first_dir_wins_and_skips_bad(tmp_path: Path):
 
 def test_builtin_agents():
     cat = AgentCatalog.load([ROOT / "agents"])
-    assert cat.names() == ["executor", "planner", "verifier"]
+    assert cat.names() == ["executor", "marketer", "planner", "verifier"]
     assert cat.get("executor").skills == "all"
     assert "[src:<id>]" in cat.get("executor").instructions

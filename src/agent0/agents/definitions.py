@@ -27,7 +27,12 @@ class AgentDef(BaseModel):
     source: Path | None = None
 
     def effective_budget(self, base: Budget | None = None) -> Budget:
-        return (base or Budget()).model_copy(update=self.budget)
+        # Agent budgets are caps: the stricter of task and agent wins per field.
+        budget = (base or Budget()).model_copy()
+        for key, limit in self.budget.items():
+            if key in Budget.model_fields:
+                setattr(budget, key, min(getattr(budget, key), limit))
+        return budget
 
 
 def parse_agent(path: Path) -> AgentDef:
