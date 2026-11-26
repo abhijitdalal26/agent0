@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Calendar, Plus, Power, Trash2 } from "lucide-react";
+import { Plus, Power, Trash2 } from "lucide-react";
 import {
   createSchedule,
   deleteSchedule,
@@ -15,6 +15,7 @@ import {
 import { describeCron } from "@/components/new/cron";
 import { formatRelativeTime } from "@/lib/utils";
 import { Badge, btn, btnDanger, btnPrimary, Empty, ErrorBox, inputCls, Loading } from "@/components/new/ui";
+import { PageHeader } from "@/components/ui";
 
 const PRESETS = [
   { label: "Every day 09:00", cron: "0 9 * * *" },
@@ -184,20 +185,13 @@ export default function SchedulesPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-blue-500" />
-            <span>Schedules</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Recurring prompts an agent runs on a cron schedule.</p>
-        </div>
+      <PageHeader title="Schedules" description="Recurring prompts an agent runs on a cron schedule.">
         {!creating && (
           <button className={btnPrimary} onClick={() => setCreating(true)}>
             <Plus className="w-3.5 h-3.5" /> New schedule
           </button>
         )}
-      </div>
+      </PageHeader>
 
       {creating && (
         <CreateForm

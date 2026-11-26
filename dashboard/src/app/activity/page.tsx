@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Pause, Play } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 import { getRun } from "@/lib/api";
 import { useEventStream } from "@/lib/sse";
 import type { RunEvent } from "@/types";
 import { EventTimeline } from "@/components/EventTimeline";
+import { PageHeader } from "@/components/ui";
 import { getGlobalEvents } from "@/components/data";
 
 const TYPES = [
@@ -65,14 +66,9 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-4 sm:space-y-5">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Activity className="w-5 h-5 text-blue-500" />Activity
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Every event across all runs, live.</p>
-        </div>
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
+      <PageHeader title="Activity" description="Every event across all runs, live." />
+
+      <div className="flex flex-col md:flex-row md:items-center md:justify-end gap-2">
           <select value={type} onChange={(e) => setType(e.target.value)} className={sel} aria-label="Event type">
             <option value="">All types</option>
             {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -88,7 +84,6 @@ export default function ActivityPage() {
           >
             {frozen ? <><Play className="w-3.5 h-3.5" />Resume</> : <><Pause className="w-3.5 h-3.5" />Pause</>}
           </button>
-        </div>
       </div>
 
       <div className="h-[70vh] lg:h-[calc(100vh-14rem)] min-h-[360px]">

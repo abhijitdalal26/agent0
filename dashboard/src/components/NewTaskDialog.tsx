@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Sparkles, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { createTask, getAgents } from "@/lib/api";
 
 interface Props {
@@ -112,12 +112,9 @@ export function NewTaskDialog({ isOpen, onClose, defaultAgent }: Props) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-background/80 backdrop-blur-sm" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label="New task" onClick={(e) => e.stopPropagation()} className="relative w-full max-w-2xl bg-card border border-border rounded-t-xl sm:rounded-xl shadow-2xl p-4 sm:p-6 overflow-y-auto max-h-[92vh]">
         <div className="flex items-center justify-between pb-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500"><Sparkles className="w-5 h-5" /></div>
-            <div>
-              <h3 className="font-semibold text-base">New task</h3>
-              <p className="text-xs text-muted-foreground">Describe the goal. Add checks the result must pass.</p>
-            </div>
+          <div>
+            <h3 className="font-semibold text-base">New task</h3>
+            <p className="text-xs text-muted-foreground">Describe the goal. Add checks the result must pass.</p>
           </div>
           <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary"><X className="w-5 h-5" /></button>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Brain, Search, History, Pencil, Trash2, X } from "lucide-react";
+import { Search, History, Pencil, Trash2, X } from "lucide-react";
 import {
   editFact,
   errMessage,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/api-settings";
 import { formatRelativeTime } from "@/lib/utils";
 import { Badge, btn, btnDanger, btnPrimary, Empty, ErrorBox, inputCls, Loading } from "@/components/new/ui";
+import { PageHeader } from "@/components/ui";
 
 const SCOPES = ["all", "global", "agent", "project", "task"];
 
@@ -215,15 +216,7 @@ export default function MemoryPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Brain className="w-5 h-5 text-blue-500" />
-          <span>Memory</span>
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Facts the agents have learned. Editing supersedes a fact and forgetting expires it, so history is always kept.
-        </p>
-      </div>
+      <PageHeader title="Memory" description="Facts the agents have learned. Editing supersedes a fact and forgetting expires it, so history is always kept." />
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="relative flex-1">

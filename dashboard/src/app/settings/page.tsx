@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Settings, MessageSquare, DollarSign, Bell, KeyRound, ChevronRight } from "lucide-react";
 import { errMessage, listSecrets, TELEGRAM_SECRET, type SecretItem } from "@/lib/api-settings";
 import { Badge, ErrorBox, Loading } from "@/components/new/ui";
+import { PageHeader } from "@/components/ui";
 
 const LEVELS = [
   { id: "final_only", title: "Final only", desc: "Notify when a task reaches succeeded or failed." },
@@ -35,13 +36,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Settings className="w-5 h-5 text-blue-500" />
-          <span>Settings</span>
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">Channels, notification defaults and credentials.</p>
-      </div>
+      <PageHeader title="Settings" description="Channels, notification defaults and credentials." />
 
       <Link
         href="/settings/keys"

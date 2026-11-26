@@ -9,7 +9,7 @@ import type { Task } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NewTaskDialog } from "@/components/NewTaskDialog";
-import { EmptyState, RelTime, Skeleton } from "@/components/ui";
+import { EmptyState, PageHeader, RelTime, Skeleton } from "@/components/ui";
 import { runIdForTask } from "@/components/data";
 
 const sel = "text-xs px-2.5 py-2 rounded-lg border border-input bg-card/60 text-foreground focus:outline-none min-w-0";
@@ -73,15 +73,11 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Tasks</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Every task, its attempts and verification result.</p>
-        </div>
-        <button onClick={() => setNewOpen(true)} className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shrink-0">
+      <PageHeader title="Tasks" description="Every task, its attempts and verification result.">
+        <button onClick={() => setNewOpen(true)} className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors shrink-0">
           <Plus className="w-4 h-4" />New task
         </button>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-col lg:flex-row gap-2.5">
         <div className="relative flex-1">

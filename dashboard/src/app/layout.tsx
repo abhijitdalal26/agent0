@@ -1,9 +1,22 @@
 import type { Metadata } from "next";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/Navbar";
+import { AppShell } from "@/components/AppShell";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "agent0 — Multi-Model Verified Agent Harness",
+  title: "agent0 — Agent Harness",
   description:
     "Operator command center to steer, monitor, verify, and inspect multi-model agent execution.",
 };
@@ -14,12 +27,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-background text-foreground flex flex-col font-sans">
-        <Navbar />
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-          {children}
-        </main>
+    <html lang="en" className={`dark ${inter.variable} ${mono.variable}`}>
+      <body className="min-h-screen bg-background text-foreground font-sans">
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

@@ -2,8 +2,9 @@
 
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
-import { ArrowLeft, Save, Bot, Shield, Check, History, Sparkles } from "lucide-react";
+import { ArrowLeft, Save, Check, History, Shield } from "lucide-react";
 import { getAgent, updateAgent, getModelProfiles } from "@/lib/api";
+import { PageHeader } from "@/components/ui";
 import type { AgentDefinition, ModelProfile } from "@/types";
 
 export default function AgentDetailPage({ params }: { params: Promise<{ name: string }> }) {
@@ -71,31 +72,22 @@ export default function AgentDetailPage({ params }: { params: Promise<{ name: st
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-            <Link href="/agents" className="hover:text-foreground flex items-center gap-1">
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Agents</span>
-            </Link>
-            <span>/</span>
-            <span className="text-foreground">{agent.name}</span>
-          </div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <span>Agent: {agent.name}</span>
-          </h1>
-        </div>
-
+      <Link
+        href="/agents"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" /> All agents
+      </Link>
+      <PageHeader title={agent.name} description={agent.description}>
         <button
           onClick={handleSave}
           disabled={saving}
           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm shadow-blue-500/30 transition-all disabled:opacity-50"
         >
           {savedSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-          <span>{savedSuccess ? "Saved (v+1)" : saving ? "Saving..." : "Save Configuration"}</span>
+          <span>{savedSuccess ? "Saved" : saving ? "Saving…" : "Save"}</span>
         </button>
-      </div>
+      </PageHeader>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Instructions Editor */}

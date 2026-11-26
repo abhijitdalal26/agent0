@@ -7,7 +7,7 @@ export function StatusBadge({ status, className = "" }: { status: RunStatus; cla
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium border ${styles.bg} ${styles.text} ${styles.border} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${styles.bg} ${styles.text} ${className}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${styles.dot}`} />
       <span>{label}</span>

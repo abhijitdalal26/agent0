@@ -10,6 +10,26 @@ export function RelTime({ iso, className = "" }: { iso?: string | null; classNam
   );
 }
 
+export function PageHeader({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pb-5 mb-6 border-b border-border/60">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      </div>
+      {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
+    </div>
+  );
+}
+
 export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: string; action?: ReactNode }) {
   return (
     <div className="p-8 text-center border border-dashed border-border rounded-xl text-muted-foreground text-xs space-y-1.5">

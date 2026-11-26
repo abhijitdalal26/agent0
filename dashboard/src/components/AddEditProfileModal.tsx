@@ -1,22 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  X,
-  Eye,
-  EyeOff,
-  Key,
-  Cpu,
-  Video,
-  Image as ImageIcon,
-  Volume2,
-  Mic,
-  MessageSquare,
-  Sparkles,
-  CheckCircle2,
-  Shield,
-  Layers,
-} from "lucide-react";
+import { X, Eye, EyeOff, Key, Shield } from "lucide-react";
 import type { Capability, ModelProfile } from "@/types";
 
 interface AddEditProfileModalProps {
@@ -62,9 +47,6 @@ export function AddEditProfileModal({
     initialProfile?.cost.per_1k_chars?.toString() || "0.002"
   );
 
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
-
   if (!isOpen) return null;
 
   const handleProviderChange = (newProvider: string) => {
@@ -77,15 +59,6 @@ export function AddEditProfileModal({
     else if (newProvider === "Runway") setKeyEnvVar("RUNWAY_API_KEY");
     else if (newProvider === "Luma") setKeyEnvVar("LUMA_API_KEY");
     else setKeyEnvVar(`${newProvider.toUpperCase().replace(/\s+/g, "_")}_API_KEY`);
-  };
-
-  const handleTestKey = async () => {
-    setTesting(true);
-    setTestResult(null);
-    // Simulate ping to provider API
-    await new Promise((r) => setTimeout(r, 700));
-    setTesting(false);
-    setTestResult("API Key verified successfully: ping 200 OK.");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -128,18 +101,13 @@ export function AddEditProfileModal({
       <div className="relative w-full max-w-2xl bg-card border border-border rounded-xl shadow-2xl p-6 overflow-y-auto max-h-[90vh] space-y-5">
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-4 border-b border-border">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-              <Cpu className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground text-base">
-                {initialProfile ? "Edit Model & API Profile" : "Add Model Provider & API Key"}
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Connect multi-modal models for chat, vision, images, video, and voice synthesis.
-              </p>
-            </div>
+          <div>
+            <h3 className="font-semibold text-foreground text-base">
+              {initialProfile ? "Edit model profile" : "Add model profile"}
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              A profile is one model from one provider. Agents pick by capability, not by name.
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -183,13 +151,13 @@ export function AddEditProfileModal({
                 onChange={(e) => setCapability(e.target.value as Capability)}
                 className="w-full text-xs px-3 py-2 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="chat">💬 Chat & Tool Execution</option>
-                <option value="vision">👁️ Vision & Multimodal Analysis</option>
-                <option value="image_gen">🖼️ Image Generation (Imagen / Flux / DALL-E)</option>
-                <option value="video_gen">🎬 Video Generation (Veo / Runway / Sora)</option>
-                <option value="tts">🎙️ Voice & Text-to-Speech (ElevenLabs / Groq)</option>
-                <option value="stt">👂 Speech-to-Text (Whisper / Audio transcription)</option>
-                <option value="embedding">🧬 Vector Embeddings (Search & Retrieval)</option>
+                <option value="chat">Chat &amp; tools</option>
+                <option value="vision">Vision</option>
+                <option value="image_gen">Image generation</option>
+                <option value="video_gen">Video generation</option>
+                <option value="tts">Text-to-speech</option>
+                <option value="stt">Speech-to-text</option>
+                <option value="embedding">Embeddings</option>
               </select>
             </div>
           </div>
@@ -267,35 +235,15 @@ export function AddEditProfileModal({
               </button>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-[11px] text-muted-foreground">
-              <div className="flex items-center gap-1 font-mono">
-                <span>Env variable:</span>
-                <input
-                  type="text"
-                  value={keyEnvVar}
-                  onChange={(e) => setKeyEnvVar(e.target.value)}
-                  className="px-1.5 py-0.5 rounded border border-input bg-background text-foreground text-[11px] font-mono"
-                />
-              </div>
-
-              {apiKey && (
-                <button
-                  type="button"
-                  onClick={handleTestKey}
-                  disabled={testing}
-                  className="text-xs font-medium text-blue-500 hover:text-blue-400 self-start sm:self-auto"
-                >
-                  {testing ? "Testing key..." : "Test Connection"}
-                </button>
-              )}
+            <div className="flex items-center gap-1 font-mono pt-1 text-[11px] text-muted-foreground">
+              <span>Env variable:</span>
+              <input
+                type="text"
+                value={keyEnvVar}
+                onChange={(e) => setKeyEnvVar(e.target.value)}
+                className="px-1.5 py-0.5 rounded border border-input bg-background text-foreground text-[11px] font-mono"
+              />
             </div>
-
-            {testResult && (
-              <div className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 p-2 rounded border border-emerald-500/20 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{testResult}</span>
-              </div>
-            )}
           </div>
 
           {/* Dynamic Pricing / Cost Fields */}

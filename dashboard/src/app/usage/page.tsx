@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, BarChart3, Coins, Cpu, Receipt, TrendingUp } from "lucide-react";
+import { ArrowUpRight, BarChart3, Coins, Cpu, TrendingUp } from "lucide-react";
 import { getUsageRecords } from "@/lib/api";
 import type { UsageRecord } from "@/types";
 import { formatCurrency, formatTokens } from "@/lib/utils";
-import { EmptyState, RelTime, Skeleton } from "@/components/ui";
+import { EmptyState, PageHeader, RelTime, Skeleton } from "@/components/ui";
 
 const PALETTE = ["#3b82f6", "#a855f7", "#10b981", "#f59e0b", "#06b6d4", "#f43f5e", "#84cc16"];
 const PAGE = 50;
@@ -160,10 +160,7 @@ export default function UsagePage() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2"><Receipt className="w-5 h-5 text-emerald-500" />Usage</h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">Every model call with exact cost. Totals always equal the sum of the rows below.</p>
-      </div>
+      <PageHeader title="Usage" description="Every model call with exact cost. Totals always equal the sum of the rows below." />
 
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={sel} aria-label="From date" />

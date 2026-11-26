@@ -16,6 +16,7 @@ import {
 } from "@/lib/api-settings";
 import { formatRelativeTime } from "@/lib/utils";
 import { Badge, btn, btnDanger, btnPrimary, Empty, ErrorBox, inputCls, Loading } from "@/components/new/ui";
+import { PageHeader } from "@/components/ui";
 
 type Feedback = { tone: "ok" | "bad"; text: string } | null;
 
@@ -244,17 +245,11 @@ export default function KeysPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div className="space-y-1">
+      <div className="space-y-3">
         <Link href="/settings" className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-3 h-3" /> Settings
         </Link>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <KeyRound className="w-5 h-5 text-blue-500" />
-          <span>API keys</span>
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Provider and channel credentials. Values are write-only: once saved they are encrypted on the server and only the last four characters are ever shown.
-        </p>
+        <PageHeader title="API keys" description="Provider and channel credentials. Values are write-only: once saved they are encrypted on the server and only the last four characters are ever shown." />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3 text-[11px] text-muted-foreground">

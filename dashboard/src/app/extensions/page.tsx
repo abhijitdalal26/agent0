@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Layers, Wrench, Sparkles, Server, CheckCircle2, AlertCircle, Play, Code } from "lucide-react";
+import { Wrench, CheckCircle2, Play } from "lucide-react";
 import { getExtensions, testMcpConnection } from "@/lib/api";
 import type { Extension } from "@/types";
-import { EmptyState } from "@/components/ui";
+import { EmptyState, PageHeader } from "@/components/ui";
 
 export default function ExtensionsPage() {
   const [extensions, setExtensions] = useState<Extension[]>([]);
@@ -33,16 +33,7 @@ export default function ExtensionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Layers className="w-5 h-5 text-blue-500" />
-          <span>Extensions: Skills, MCP & Plugins</span>
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Dynamic capability loader: on-demand agent skills, MCP server toolsets, and domain packs.
-        </p>
-      </div>
+      <PageHeader title="Extensions" description="On-demand skills, MCP server toolsets and plugin packs." />
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border pb-2">

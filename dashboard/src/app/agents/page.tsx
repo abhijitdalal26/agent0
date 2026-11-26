@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bot, ArrowRight, Wrench, CheckCircle2, Cpu, Coins, Shield } from "lucide-react";
+import { Bot, ArrowRight, Cpu } from "lucide-react";
 import { getAgents } from "@/lib/api";
 import type { AgentDefinition } from "@/types";
 import { formatCurrency } from "@/lib/utils";
-import { EmptyState, Skeleton } from "@/components/ui";
+import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
@@ -21,16 +21,7 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-          <Bot className="w-5 h-5 text-blue-500" />
-          <span>Agent Definitions & Roles</span>
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Autonomous agents, system instructions, tool permission policies, and cost envelopes.
-        </p>
-      </div>
+      <PageHeader title="Agents" description="Roles, instructions, tool permissions and cost envelopes." />
 
       {/* Agents Grid */}
       {loading && <Skeleton rows={3} />}

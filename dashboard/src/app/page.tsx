@@ -10,7 +10,7 @@ import type { Approval, OverviewStats, Run, RunEvent, Task } from "@/types";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ApprovalCard } from "@/components/ApprovalCard";
 import { NewTaskDialog } from "@/components/NewTaskDialog";
-import { EmptyState, RelTime, Skeleton, formatDuration, isFinished } from "@/components/ui";
+import { EmptyState, PageHeader, RelTime, Skeleton, formatDuration, isFinished } from "@/components/ui";
 import { runIdForTask } from "@/components/data";
 
 function Stat({ label, icon, value, tone = "text-foreground", className = "" }: { label: string; icon: React.ReactNode; value: React.ReactNode; tone?: string; className?: string }) {
@@ -66,15 +66,11 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Overview</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">What is running, what needs you, and what just finished.</p>
-        </div>
-        <button onClick={() => setNewOpen(true)} className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shrink-0">
+      <PageHeader title="Overview" description="What is running, what needs you, and what just finished.">
+        <button onClick={() => setNewOpen(true)} className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors shrink-0">
           <Plus className="w-4 h-4" />New task
         </button>
-      </div>
+      </PageHeader>
 
       {failed && !stats && (
         <EmptyState title="Could not reach the API" hint="Check that the agent0 API is running and the dashboard proxy is configured." action={<button onClick={load} className="text-xs text-blue-500 hover:underline">Retry</button>} />

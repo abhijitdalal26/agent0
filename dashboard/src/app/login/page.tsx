@@ -32,9 +32,14 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-6">
-        <h1 className="text-lg font-semibold text-foreground">Sign in to agent0</h1>
+    <div className="min-h-[70vh] flex items-center justify-center px-4">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-5 rounded-xl border border-border bg-card p-6 shadow-sm">
+        <div className="space-y-1.5">
+          <div className="w-8 h-8 rounded-lg bg-foreground text-background flex items-center justify-center text-xs font-bold font-mono">
+            a0
+          </div>
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">Sign in to agent0</h1>
+        </div>
         <label className="block space-y-1.5">
           <span className="text-xs text-muted-foreground">Password</span>
           <input

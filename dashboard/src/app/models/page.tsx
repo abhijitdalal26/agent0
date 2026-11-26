@@ -2,25 +2,19 @@
 
 import { useEffect, useState } from "react";
 import {
-  Cpu,
-  Sparkles,
   Key,
   Zap,
-  CheckCircle2,
-  XCircle,
-  ArrowRight,
   Plus,
   Video,
   Image as ImageIcon,
   Volume2,
   Mic,
   Eye,
-  EyeOff,
   Edit2,
 } from "lucide-react";
 import { getModelProfiles, getRouterPreview } from "@/lib/api";
 import type { ModelProfile, Capability } from "@/types";
-import { EmptyState, Skeleton } from "@/components/ui";
+import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 import { AddEditProfileModal } from "@/components/AddEditProfileModal";
 
 const CAPABILITY_TABS: { id: Capability | "all"; label: string; icon?: any }[] = [
@@ -102,7 +96,7 @@ export default function ModelsPage() {
       case "stt":
         return <span className="text-amber-400 font-mono flex items-center gap-1"><Mic className="w-3 h-3" /> stt</span>;
       case "vision":
-        return <span className="text-blue-400 font-mono flex items-center gap-1">👁️ vision</span>;
+        return <span className="text-blue-400 font-mono flex items-center gap-1"><Eye className="w-3 h-3" /> vision</span>;
       case "chat":
       default:
         return <span className="text-foreground font-mono">chat</span>;
@@ -111,41 +105,33 @@ export default function ModelsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Cpu className="w-5 h-5 text-purple-400" />
-            <span>Model Registry & Provider Router</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Multi-provider configuration for chat, vision, image, video, and voice models with secure masked API credentials.
-          </p>
-        </div>
-
+      <PageHeader
+        title="Models"
+        description="Provider profiles, credentials and the routing policy agents use."
+      >
         <button
           onClick={() => {
             setEditingProfile(null);
             setIsModalOpen(true);
           }}
-          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg shadow-sm shadow-blue-500/30 transition-all hover:scale-[1.02]"
+          className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4" />
-          <span>Add Model / API Key</span>
+          <span>Add profile</span>
         </button>
-      </div>
+      </PageHeader>
 
-      {/* Router Preview Interactive Sandbox */}
-      <div className="p-4 rounded-xl border border-border bg-gradient-to-r from-purple-500/[0.05] via-blue-500/[0.05] to-transparent space-y-3">
+      {/* Router Preview */}
+      <div className="p-4 rounded-xl border border-border bg-card/60 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-400" />
-            <h3 className="text-xs font-semibold text-foreground uppercase tracking-wider">
-              Dynamic Router Live Simulator
+            <Zap className="w-4 h-4 text-amber-500" />
+            <h3 className="text-sm font-semibold text-foreground">
+              Router preview
             </h3>
           </div>
           <span className="text-[11px] text-muted-foreground">
-            Agents ask for a capability, not a model profile.
+            Agents ask for a capability, not a model.
           </span>
         </div>
 

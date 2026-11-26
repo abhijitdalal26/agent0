@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, History, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, History } from "lucide-react";
 import { getApprovals } from "@/lib/api";
 import { useEventStream } from "@/lib/sse";
 import type { Approval, RunEvent } from "@/types";
 import { ApprovalCard } from "@/components/ApprovalCard";
-import { EmptyState, Skeleton } from "@/components/ui";
+import { EmptyState, PageHeader, Skeleton } from "@/components/ui";
 
 export default function ApprovalsPage() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -43,12 +43,7 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
-          <ShieldAlert className="w-5 h-5 text-amber-500" />Approvals
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">Risky actions pause here until you approve or reject them.</p>
-      </div>
+      <PageHeader title="Approvals" description="Risky actions pause here until you approve or reject them." />
 
       {failed && approvals.length === 0 && (
         <EmptyState title="Could not load approvals" hint="Check the API connection." action={<button onClick={load} className="text-xs text-blue-500 hover:underline">Retry</button>} />
