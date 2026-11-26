@@ -348,19 +348,22 @@ class Engine:
     def _judge_factory(self, run_id: str):
         def factory(exclude_provider: str | None) -> JudgeModel:
             try:
-                profile = self.rt.router.pick(
+                ranked = self.rt.router.rank(
                     Capability.CHAT, prefer="smart", exclude_provider=exclude_provider
                 )
             except NoProfileAvailable:
                 # Single-provider setups still get a judge, just not an independent one.
-                profile = self.rt.router.pick(Capability.CHAT, prefer="smart")
+                ranked = self.rt.router.rank(Capability.CHAT, prefer="smart")
+            top = [r.profile for r in ranked[:3]]
+            profile = top[0]
 
             def cost(usage: Any) -> float:
                 return compute_cost(
                     profile, Units(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
                 )
 
-            return JudgeModel(build_model(profile), profile.provider, cost)
+            model = build_fallback(top) if len(top) > 1 else build_model(profile)
+            return JudgeModel(model, profile.provider, cost)
 
         return factory
 
