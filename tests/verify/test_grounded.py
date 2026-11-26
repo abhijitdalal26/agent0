@@ -79,6 +79,17 @@ async def test_uncited_answer_fails(ctx_factory, no_judge):
     assert "[src:" in v.evidence
 
 
+async def test_non_claim_patterns_skip_boilerplate(ctx_factory, judge):
+    answer = GOOD_ANSWER + " See terms. [src:doc:wiki:7]"
+    spy = judge(labels((1, "supported", ""), (2, "supported", ""), (3, "supported", "")))
+    ctx = ctx_factory(answer, sources=SOURCES, executor_provider="groq")
+    v = await GroundedCheck(spy.factory).run(
+        crit(non_claim_patterns=["see terms"]), ctx
+    )
+    assert v.status == VerdictStatus.PASS
+    assert "See terms" not in spy.prompts[0]
+
+
 async def test_supported_claims_pass(ctx_factory, judge):
     spy = judge(labels((1, "supported", ""), (2, "supported", ""), (3, "supported", "")))
     ctx = ctx_factory(GOOD_ANSWER, sources=SOURCES, executor_provider="groq")

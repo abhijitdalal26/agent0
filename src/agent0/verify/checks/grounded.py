@@ -76,7 +76,8 @@ class GroundedJudgement(BaseModel):
 
 class GroundedCheck:
     """Config: allow_abstention (true), check_numbers (true), allowed_sources (source names in scope),
-    abstention_patterns (regexes), max_source_chars (2000)."""
+    abstention_patterns (regexes), non_claim_patterns (regexes for boilerplate like disclaimers),
+    max_source_chars (2000)."""
 
     type = CheckType.GROUNDED
     stage = CheckStage.JUDGE
@@ -98,6 +99,13 @@ class GroundedCheck:
             except Exception as exc:
                 return verdict(criterion, VerdictStatus.FAIL, f"{path} not found or unreadable: {exc}")
         claims = parse_claims(text)
+        if claims and (skips := cfg.get("non_claim_patterns")):
+            kept = [c for c in claims if not any(re.search(p, c.text, re.I) for p in skips)]
+            if not kept:
+                return verdict(
+                    criterion, VerdictStatus.PASS, "only boilerplate text remained after filtering non-claims"
+                )
+            claims = kept
         if not claims:
             patterns = cfg.get("abstention_patterns", DEFAULT_ABSTENTION_PATTERNS)
             if any(re.search(p, text, re.IGNORECASE) for p in patterns):
