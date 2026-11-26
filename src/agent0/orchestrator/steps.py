@@ -219,8 +219,9 @@ class Engine:
                 required.append(criterion)
         if not required:
             return spec, required
-        extra = [c for c in spec.criteria if c.id not in seen]
-        return spec.model_copy(update={"criteria": required + extra}), required
+        # User-authored criteria are the contract; planner extras only fill in when
+        # the task specifies none, otherwise a hallucinated check can sink a good run.
+        return spec.model_copy(update={"criteria": required}), required
 
     async def _stored(self, task: Task) -> TaskSpec | None:
         if self.rt.repos:

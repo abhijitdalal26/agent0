@@ -92,7 +92,8 @@ async def test_required_criteria_are_kept_and_enforced(runtime):
     task = Task(title="hello", prompt="Write hello.txt", criteria=[required], budget=Budget(max_retries=0))
     _, outcome = await LocalOrchestrator(runtime).run_to_end(task)
     assert outcome.status == RunStatus.FAILED
-    assert {v.check_id for v in outcome.report.verdicts} >= {"must", "c1"}
+    # planner extras are dropped when the task carries its own criteria
+    assert {v.check_id for v in outcome.report.verdicts} == {"must"}
 
 
 async def test_crash_outside_drive_marks_run_failed(runtime, monkeypatch):
