@@ -115,7 +115,9 @@ Base: `/api/v1`. JSON. Errors: `{ "error": { "code": "string", "message": "strin
 | GET | `/tasks/{id}` | Task + its runs |
 | GET | `/runs?status=running` | Live/recent runs |
 | GET | `/runs/{id}` | Run + spec + verdicts + artifacts |
-| GET | `/runs/{id}/events?after_seq=` | Event history |
+| GET | `/runs/{id}/events?after_seq=` | Event history (each event carries `prev_hash`/`hash` chain links) |
+| GET | `/runs/{id}/verify` | Recompute the event hash chain → `{ok, events, bad_seq, head_hash}` |
+| GET | `/runs/{id}/receipt` | Signed audit bundle (run + spec + verdicts + chain state, HMAC-SHA256) |
 | GET | `/runs/{id}/stream` | **SSE** stream of new events (`event: <type>`, `data: <Event JSON>`; supports `Last-Event-ID` = seq) |
 | POST | `/runs/{id}/stop` | Stop run |
 | POST | `/tasks/{id}/retry` | New attempt |

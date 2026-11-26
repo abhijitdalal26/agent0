@@ -6,22 +6,18 @@ Read this first after a restart, then `AGENTS.md` and `docs/architecture.md`.
 
 A general multi-model agent harness: plan → execute → verify → retry, Postgres memory, approvals, Telegram, dashboard. It is for an internship application: a 20–60 min single-take video of building with AI, plus a CV. The deadline is **Sat 2026-11-28**. The demo uses the fictional brand "Northwind Health", so don't put the real company name in the repo. Repo: https://github.com/abhijitdalal26/agent0 (public).
 
-## State: code complete, not yet run against real models
+## State: verified end-to-end against real models (2026-11-26 night session)
 
-- `main` is pushed. All subagent branches are merged: cloud-deploy, dashboard-security, dash-settings-pages and dashboard polish.
-- `uv run pytest`: 299 passed. Ruff and pyright are clean. Dashboard `tsc` and `pnpm build` are clean (20 routes).
-- Verified live on this machine:
-  - Postgres integration tests.
-  - Docker sandbox.
-  - Temporal workflow test.
-  - API endpoints against real Postgres, including `/healthz`.
-  - Dashboard login gate, proxy (401 without a session) and every page loading.
-  - Secrets: stored encrypted, shown only as `••••last4`, deleted.
-- **Not yet verified:**
-  - Real Groq/Gemini calls. The keys in `.env` are empty.
-  - Telegram.
-  - `docker build` of the image (killed for low RAM).
-  - The cloud compose: Caddy, Temporal container, E2B.
+- `uv run pytest`: 335 passed (+ integration). Ruff, pyright, dashboard `tsc`/`pnpm build` clean.
+- **Real Groq/Gemini calls verified**: the keys are not in `.env` but ARE in the Postgres secret store (added via Dashboard → Settings → Keys earlier). Live runs succeeded: file-writing task, cron-scheduled task, and a browser-check task.
+- New since the last handoff:
+  - Agent CRUD API (`GET/POST/PUT /agents`, `/agents/{name}/versions`) with DB overlay + `model_profile` pinning.
+  - Cron `Scheduler` — schedules actually fire (`next_run_at` column, `agent0 serve` runs it).
+  - Daily spend cap via `AGENT0_DAILY_BUDGET_USD`.
+  - **Tamper-evident audit trail**: every event is hash-chained (`prev_hash`/`hash`); `GET /runs/{id}/verify` recomputes it; `GET /runs/{id}/receipt` returns an HMAC-signed audit bundle; dashboard run page has "Verify trail" + "Receipt" buttons. `agent0 db-backfill-hashes` chained pre-existing rows — all dev runs verify `ok`.
+  - **Browser check** (`type: "browser"`): real headless Chromium via Playwright (optional extra `uv sync --extra browser` + `playwright install chromium`). On Windows it runs on a dedicated thread because the server's SelectorEventLoop can't host Playwright's pipe transport.
+  - Dashboard redesign: sidebar `AppShell`, unified `PageHeader`, de-slopped modals.
+- Still unverified: Telegram, Temporal worker path, cloud compose, `docker build` of the image.
 
 ## Environment facts (Windows)
 
@@ -33,7 +29,7 @@ A general multi-model agent harness: plan → execute → verify → retry, Post
 ## Secrets and config locations (never paste values in chat)
 
 - `.env` (git-ignored) holds:
-  - `GROQ_API_KEY` and `GEMINI_API_KEY`, which are **empty, to be added by the user**
+  - `GROQ_API_KEY` and `GEMINI_API_KEY`, which are **empty in `.env` — the working keys live in the Postgres secret store** (dashboard → Settings → Keys). `resolve_secret` falls through env → secret store.
   - `AGENT0_API_KEY`, `AGENT0_SECRET_KEY` and `AGENT0_DATABASE_URL`
   - Telegram token and allowed users, not set yet
 - `dashboard/.env.local` (git-ignored) holds `AGENT0_API_URL=http://127.0.0.1:8000`, `AGENT0_API_KEY`, `DASHBOARD_PASSWORD` (the login) and `DASHBOARD_SESSION_SECRET`. The old file is `.env.local.bak`.
