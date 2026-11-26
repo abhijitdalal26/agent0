@@ -207,6 +207,24 @@ def db_init() -> None:
     console.print("schema applied")
 
 
+@app.command("db-backfill-hashes")
+def db_backfill_hashes() -> None:
+    """Hash-chain events written before the audit trail existed, so old runs verify too."""
+
+    async def go() -> None:
+        from agent0.db.backfill import backfill_event_hashes
+        from agent0.db.pool import close_pool, create_pool
+
+        pool = await create_pool()
+        try:
+            result = await backfill_event_hashes(pool)
+        finally:
+            await close_pool(pool)
+        console.print(f"chained {result['events']} events across {result['runs']} runs")
+
+    _run_async(go())
+
+
 @app.command("ingest")
 def ingest(source: str) -> None:
     """Index a docs knowledge source from config/knowledge.yaml into Postgres."""

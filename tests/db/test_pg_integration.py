@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import uuid
 
@@ -7,7 +8,9 @@ from psycopg import AsyncConnection, sql
 from psycopg.rows import DictRow, dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from agent0.core.events import verify_chain
 from agent0.core.types import EventType, Run, Task
+from agent0.db.backfill import backfill_event_hashes
 from agent0.db.pool import apply_schema, close_pool, create_pool
 from agent0.db.repos import PgEventSink, PgUsageSink, Repos
 from agent0.memory.base import Fact, RunSummary
@@ -36,7 +39,8 @@ async def pool():
             min_size=1,
             max_size=4,
             open=False,
-            kwargs={"row_factory": dict_row, "options": f"-c search_path={schema}"},
+            # public stays in the path so the vector extension's types resolve.
+            kwargs={"row_factory": dict_row, "options": f"-c search_path={schema},public"},
         )
         await test_pool.open(wait=True)
         await apply_schema(test_pool)
@@ -73,6 +77,23 @@ async def test_event_sink_streams_live(pool):
     event = await asyncio.wait_for(first, 5)
     assert event.run_id == "live-run"
     await stream.aclose()
+
+
+async def test_backfill_chains_legacy_events(pool):
+    repos = Repos(pool)
+    run = await repos.runs.create(Run(task_id=(await repos.tasks.create(Task(title="t", prompt="p"))).id))
+    # Simulate pre-chain rows: insert directly so hash stays NULL.
+    async with pool.connection() as conn:
+        for seq, payload in enumerate(({"a": 1}, {"b": 2}), start=1):
+            await conn.execute(
+                "INSERT INTO events (id, run_id, seq, type, payload) VALUES (%s, %s, %s, %s, %s::jsonb)",
+                (f"legacy-{seq}", run.id, seq, "run.started", json.dumps(payload)),
+            )
+    result = await backfill_event_hashes(pool)
+    assert result == {"runs": 1, "events": 2}
+    events = await repos.events.list(run.id)
+    assert verify_chain(events) == (True, None)
+    assert await backfill_event_hashes(pool) == {"runs": 0, "events": 0}
 
 
 async def test_memory_versioning(pool):
