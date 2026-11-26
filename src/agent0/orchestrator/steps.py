@@ -202,8 +202,6 @@ class Engine:
 
     async def _with_required(self, task: Task, spec: TaskSpec) -> TaskSpec:
         required = [Criterion.model_validate(c) for c in task.criteria]
-        if self.rt.repos and (stored := await self.rt.repos.task_specs.get(task.id)):
-            required += stored.criteria
         if not required:
             return spec
         ids = {c.id for c in required}
