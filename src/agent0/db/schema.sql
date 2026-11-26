@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS agents (
     tools jsonb NOT NULL DEFAULT '[]',
     policy jsonb NOT NULL DEFAULT '{}',
     version int NOT NULL DEFAULT 1,
+    definition jsonb,
+    versions jsonb NOT NULL DEFAULT '[]',
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -193,3 +195,7 @@ CREATE TABLE IF NOT EXISTS secrets (
     updated_at timestamptz NOT NULL DEFAULT now(),
     updated_by text
 );
+
+-- Columns added after the table first shipped; CREATE IF NOT EXISTS won't alter it.
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS definition jsonb;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS versions jsonb NOT NULL DEFAULT '[]';

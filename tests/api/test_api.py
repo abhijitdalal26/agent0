@@ -222,7 +222,46 @@ def test_agents_schedules_usage_and_stubs(env):
     assert env.client.get(f"{BASE}/agents").json()["items"][0]["name"] == "executor"
     assert env.client.get(f"{BASE}/agents/executor/versions").json()["items"][0]["version"] == 1
     assert env.client.get(f"{BASE}/agents/nope").status_code == 404
-    assert env.client.put(f"{BASE}/agents/executor").status_code == 501
+
+    put = env.client.put(
+        f"{BASE}/agents/executor",
+        json={
+            "instructions": "do it better",
+            "model_profile": "fast",
+            "tools": [{"name": "shell", "permission": "forbidden"}],
+            "budgets": {"max_usd": 2.5, "max_steps": 12},
+        },
+    )
+    assert put.status_code == 200
+    body = put.json()
+    assert body["instructions"] == "do it better"
+    assert body["model_profile"] == "fast"
+    assert body["version"] == 2
+    assert body["tools"] == [{"name": "shell", "permission": "forbidden"}]
+    assert body["budgets"] == {"max_usd": 2.5, "max_steps": 12}
+    assert env.client.get(f"{BASE}/agents/executor").json()["instructions"] == "do it better"
+    versions = env.client.get(f"{BASE}/agents/executor/versions").json()["items"]
+    assert [v["version"] for v in versions] == [1, 2]
+    assert env.repos.agents.rows["executor"]["version"] == 2
+
+    assert env.client.put(f"{BASE}/agents/executor", json={"model_profile": "nope"}).status_code == 422
+    assert (
+        env.client.put(f"{BASE}/agents/executor", json={"name": "other", "instructions": "x"}).status_code
+        == 422
+    )
+
+    created = env.client.post(
+        f"{BASE}/agents",
+        json={"name": "researcher", "instructions": "find things", "description": "d"},
+    )
+    assert created.status_code == 201
+    assert created.json()["name"] == "researcher" and created.json()["version"] == 1
+    dup = env.client.post(f"{BASE}/agents", json={"name": "researcher", "instructions": "x"})
+    assert dup.status_code == 409
+    bad_name = env.client.post(f"{BASE}/agents", json={"name": "Bad Name!", "instructions": "x"})
+    assert bad_name.status_code == 422
+    empty = env.client.post(f"{BASE}/agents", json={"name": "empty", "instructions": "  "})
+    assert empty.status_code == 422
     env.repos.facts.rows.append(
         {
             "id": "f1",

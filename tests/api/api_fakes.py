@@ -151,6 +151,29 @@ class _Profiles:
         return self.rows.pop(name, None) is not None
 
 
+class _Agents:
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, Any]] = {}
+
+    async def get(self, name: str):
+        return self.rows.get(name)
+
+    async def list(self):
+        return list(self.rows.values())
+
+    async def upsert(self, name, definition, version, versions) -> None:
+        self.rows[name] = {
+            "name": name,
+            "instructions_md": definition.get("instructions") or "",
+            "model_profile": definition.get("model_profile"),
+            "tools": definition.get("tools") or [],
+            "policy": definition.get("policy") or {},
+            "version": version,
+            "definition": definition,
+            "versions": versions,
+        }
+
+
 class _Extensions:
     def __init__(self) -> None:
         self.rows: dict[str, dict[str, Any]] = {}
@@ -214,6 +237,7 @@ class FakeRepos:
         self.artifacts = _Artifacts()
         self.usage = _Usage()
         self.model_profiles = _Profiles()
+        self.agents = _Agents()
         self.extensions = _Extensions()
         self.schedules = _Schedules()
         self.facts = _Facts()

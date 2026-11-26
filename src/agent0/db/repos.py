@@ -439,6 +439,37 @@ class ModelProfileRepo(_Repo):
         return await self._exec("DELETE FROM model_profiles WHERE name = %s", (name,)) > 0
 
 
+class AgentRepo(_Repo):
+    async def get(self, name: str) -> Row | None:
+        return await self._one("SELECT * FROM agents WHERE name = %s", (name,))
+
+    async def list(self) -> list[Row]:
+        return await self._all("SELECT * FROM agents ORDER BY name")
+
+    async def upsert(
+        self, name: str, definition: dict[str, Any], version: int, versions: list[dict[str, Any]]
+    ) -> None:
+        await self._exec(
+            "INSERT INTO agents (name, instructions_md, model_profile, tools, policy, version,"
+            " definition, versions) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)"
+            " ON CONFLICT (name) DO UPDATE SET instructions_md = EXCLUDED.instructions_md,"
+            " model_profile = EXCLUDED.model_profile, tools = EXCLUDED.tools,"
+            " policy = EXCLUDED.policy, version = EXCLUDED.version,"
+            " definition = EXCLUDED.definition, versions = EXCLUDED.versions,"
+            " updated_at = now()",
+            (
+                name,
+                str(definition.get("instructions") or ""),
+                definition.get("model_profile"),
+                Jsonb(definition.get("tools") or []),
+                Jsonb(definition.get("policy") or {}),
+                version,
+                Jsonb(definition),
+                Jsonb(versions),
+            ),
+        )
+
+
 class ExtensionRepo(_Repo):
     async def upsert(
         self,
@@ -552,6 +583,7 @@ class Repos:
         self.artifacts = ArtifactRepo(pool)
         self.usage = UsageRepo(pool)
         self.model_profiles = ModelProfileRepo(pool)
+        self.agents = AgentRepo(pool)
         self.extensions = ExtensionRepo(pool)
         self.schedules = ScheduleRepo(pool)
         self.facts = FactRepo(pool)

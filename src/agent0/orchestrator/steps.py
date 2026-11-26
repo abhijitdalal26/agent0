@@ -70,6 +70,20 @@ def _profiles(rt: Runtime, prefer: str, exclude_provider: str | None = None) -> 
     return fallback_chain([r.profile for r in ranked])
 
 
+def _agent_profiles(rt: Runtime, agent: AgentDef) -> list[ModelProfile]:
+    profiles = _profiles(rt, agent.prefer or "smart")
+    if not agent.model_profile:
+        return profiles
+    try:
+        pinned = rt.registry.get(agent.model_profile)
+    except KeyError:
+        return profiles
+    # A pinned profile that lost its key or was disabled falls back to the ranked chain.
+    if pinned.name not in {p.name for p in rt.registry.available(Capability.CHAT)}:
+        return profiles
+    return [pinned, *(p for p in profiles if p.name != pinned.name)]
+
+
 def fallback_chain(ranked: list[ModelProfile], top: int = 4) -> list[ModelProfile]:
     # The top picks, plus the best of every other provider: one overloaded, rate-limited or
     # dead-key provider must not be able to fill the whole chain.
@@ -155,7 +169,7 @@ class Engine:
     async def plan(self, task: Task, run_id: str) -> TaskSpec:
         await self.rt.events.emit(run_id, EventType.RUN_STARTED, {"task_id": task.id, "title": task.title})
         planner = self.rt.agents.get("planner")
-        profiles = _profiles(self.rt, planner.prefer or "smart")
+        profiles = _agent_profiles(self.rt, planner)
         recall = await self.rt.memory.recall(task.prompt)
         if recall.facts or recall.past_runs:
             await self.rt.events.emit(
@@ -235,7 +249,7 @@ class Engine:
         agent_def = self.rt.agents.get(task.agent)
         budget = agent_def.effective_budget(task.budget)
         try:
-            profiles = _profiles(self.rt, agent_def.prefer or "smart")
+            profiles = _agent_profiles(self.rt, agent_def)
         except NoProfileAvailable as exc:
             return AttemptResult(status="error", error=str(exc))
         sandbox = await self.rt.sandboxes.create(run_id, self.rt.settings.sandbox_image)

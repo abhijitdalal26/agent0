@@ -19,6 +19,7 @@ class AgentDef(BaseModel):
     instructions: str
     capability: Capability = Capability.CHAT
     prefer: Literal["cheap", "fast", "smart"] | None = None
+    model_profile: str | None = None
     tools: list[str] = Field(default_factory=list)
     skills: list[str] | Literal["all"] = Field(default_factory=list)
     mcp: list[str] = Field(default_factory=list)
@@ -46,6 +47,34 @@ def parse_agent(path: Path) -> AgentDef:
 class AgentCatalog:
     def __init__(self, agents: dict[str, AgentDef] | None = None) -> None:
         self._agents = dict(agents or {})
+        self._versions: dict[str, int] = {}
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> AgentDef:
+        definition = row.get("definition") or {}
+        if not definition:
+            definition = {
+                "name": row["name"],
+                "instructions": row.get("instructions_md") or "",
+                "tools": row.get("tools") or [],
+                "policy": row.get("policy") or {},
+                "model_profile": row.get("model_profile"),
+            }
+        return AgentDef.model_validate({k: v for k, v in definition.items() if k != "source"})
+
+    def apply_db(self, rows: Iterable[dict[str, Any]]) -> None:
+        """Overlay agent definitions stored in the DB; they win over files."""
+        for row in rows:
+            agent = self.from_row(row)
+            self._agents[agent.name] = agent
+            self._versions[agent.name] = int(row.get("version") or 1)
+
+    def upsert(self, agent: AgentDef, version: int) -> None:
+        self._agents[agent.name] = agent
+        self._versions[agent.name] = version
+
+    def version(self, name: str) -> int:
+        return self._versions.get(name, 1)
 
     @classmethod
     def load(cls, dirs: Iterable[Path]) -> AgentCatalog:

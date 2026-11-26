@@ -1,7 +1,11 @@
 import asyncio
 import os
+import uuid
 
 import pytest
+from psycopg import AsyncConnection, sql
+from psycopg.rows import DictRow, dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from agent0.core.types import EventType, Run, Task
 from agent0.db.pool import apply_schema, close_pool, create_pool
@@ -21,11 +25,27 @@ async def pool():
         pytest.skip("AGENT0_DATABASE_URL not set")
     from agent0.config import Settings
 
-    pool = await create_pool(Settings(database_url=URL))
-    await apply_schema(pool)
-    await apply_schema(pool)
-    yield pool
-    await close_pool(pool)
+    # A private schema per run keeps integration rows out of the dev database.
+    schema = f"agent0_it_{os.getpid()}_{uuid.uuid4().hex[:8]}"
+    admin = await create_pool(Settings(database_url=URL))
+    try:
+        async with admin.connection() as conn:
+            await conn.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        test_pool = AsyncConnectionPool[AsyncConnection[DictRow]](
+            URL,
+            min_size=1,
+            max_size=4,
+            open=False,
+            kwargs={"row_factory": dict_row, "options": f"-c search_path={schema}"},
+        )
+        await test_pool.open(wait=True)
+        await apply_schema(test_pool)
+        yield test_pool
+        await test_pool.close()
+    finally:
+        async with admin.connection() as conn:
+            await conn.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(schema)))
+        await close_pool(admin)
 
 
 async def test_tasks_runs_events_usage(pool):

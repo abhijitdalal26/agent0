@@ -74,6 +74,8 @@ async def build_deps() -> ApiDeps:
     await apply_schema(pool)
     secrets = await load_secrets(pool, settings)
     rt = build_runtime(settings, pool=pool)
+    if rt.repos is not None:
+        rt.agents.apply_db(await rt.repos.agents.list())
     orchestrator = await make_orchestrator(rt)
 
     async def on_task(msg: InboundTask) -> str:
@@ -149,6 +151,8 @@ async def worker() -> None:
     await apply_schema(pool)
     await load_secrets(pool, settings)
     rt = build_runtime(settings, pool=pool)
+    if rt.repos is not None:
+        rt.agents.apply_db(await rt.repos.agents.list())
     wire_notifications(rt, telegram_channel(settings))
     try:
         await run_worker(rt, await connect(settings))

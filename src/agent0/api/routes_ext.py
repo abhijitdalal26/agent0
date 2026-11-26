@@ -11,13 +11,9 @@ from agent0.api.deps import ApiDeps, Deps
 from agent0.api.errors import ApiError, paginate
 from agent0.api.routes_core import MAX_SCAN, Cursor, Limit
 from agent0.api.shapes import iso
-from agent0.core.types import RunStatus, new_id, utcnow
+from agent0.core.types import Capability, RunStatus, new_id, utcnow
 
 router = APIRouter()
-
-
-def _not_implemented(what: str) -> ApiError:
-    return ApiError(501, "not_implemented", f"{what} is not available yet")
 
 
 def _overrides(rows: list[dict[str, Any]]) -> dict[str, bool]:
@@ -146,6 +142,26 @@ async def test_extension(ext_id: str, request: Request, deps: Deps) -> dict[str,
     return {"ok": True, "tools": tools, "error": None}
 
 
+# Policy.decide's static defaults, mirrored so the dashboard shows the permission a tool
+# gets when the agent sets no override. "shell" is listed as safe because workspace commands
+# are; riskier commands still escalate per-call.
+_DEFAULT_SAFE_TOOLS = {
+    "shell",
+    "read_file",
+    "write_file",
+    "list_files",
+    "web_fetch",
+    "load_skill",
+    "read_skill_file",
+}
+
+
+def _tool_permission(name: str, overrides: dict[str, str]) -> str:
+    if name in overrides:
+        return overrides[name]
+    return "safe" if name in _DEFAULT_SAFE_TOOLS else "needs_approval"
+
+
 async def _agent_out(deps: ApiDeps, agent: AgentDef) -> dict[str, Any]:
     week_ago = utcnow() - timedelta(days=7)
     runs = [
@@ -154,19 +170,22 @@ async def _agent_out(deps: ApiDeps, agent: AgentDef) -> dict[str, Any]:
         if r.agent == agent.name and r.started_at >= week_ago
     ]
     done = [r for r in runs if r.status in {RunStatus.SUCCEEDED, RunStatus.FAILED}]
+    policy_tools = agent.policy.get("tools") or {}
+    names = list(dict.fromkeys([*agent.tools, *policy_tools]))
     return {
         "name": agent.name,
         "description": agent.description,
         "instructions": agent.instructions,
         "capability": str(agent.capability),
         "prefer": agent.prefer,
-        "model_profile": None,
-        "tools": agent.tools,
+        "model_profile": agent.model_profile,
+        "tools": [{"name": n, "permission": _tool_permission(n, policy_tools)} for n in names],
         "skills": agent.skills,
         "mcp": agent.mcp,
         "policy": agent.policy,
         "budget": agent.budget,
-        "version": 1,
+        "budgets": agent.budget,
+        "version": deps.agents.version(agent.name),
         "runs_7d": len(runs),
         "success_rate": (sum(1 for r in done if r.status == RunStatus.SUCCEEDED) / len(done))
         if done
@@ -195,20 +214,130 @@ async def get_agent(name: str, deps: Deps) -> dict[str, Any]:
 @router.get("/agents/{name}/versions")
 async def agent_versions(name: str, deps: Deps) -> dict[str, Any]:
     agent = _agent(deps, name)
-    return {
-        "items": [{"version": 1, "instructions": agent.instructions, "source": str(agent.source)}],
-        "next_cursor": None,
-    }
+    row = await deps.repos.agents.get(name)
+    if row and row.get("versions"):
+        items = row["versions"]
+    else:
+        items = [
+            {
+                "version": 1,
+                "updated_at": None,
+                "author": str(agent.source) if agent.source else "file",
+            }
+        ]
+    return {"items": items, "next_cursor": None}
 
 
-@router.post("/agents", status_code=501)
-async def create_agent() -> None:
-    raise _not_implemented("creating agents")
+_NAME_RE = r"^[a-z0-9][a-z0-9_-]{0,63}$"
+
+
+class AgentToolIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    permission: Literal["safe", "needs_approval", "forbidden"] = "safe"
+
+
+class AgentBudgetsIn(BaseModel):
+    max_usd: float | None = Field(default=None, gt=0)
+    max_steps: int | None = Field(default=None, gt=0, le=100_000)
+
+
+class AgentIn(BaseModel):
+    name: str | None = Field(default=None, pattern=_NAME_RE)
+    description: str | None = None
+    instructions: str | None = None
+    model_profile: str | None = None
+    tools: list[AgentToolIn | str] | None = None
+    budgets: AgentBudgetsIn | None = None
+
+
+class AgentCreate(BaseModel):
+    name: str = Field(pattern=_NAME_RE)
+    description: str = ""
+    instructions: str = Field(min_length=1, max_length=100_000)
+    model_profile: str | None = None
+    tools: list[AgentToolIn | str] | None = None
+    budgets: AgentBudgetsIn | None = None
+
+
+def _check_profile(deps: ApiDeps, pin: str | None) -> str | None:
+    if not pin:
+        return None
+    try:
+        profile = deps.registry.get(pin)
+    except KeyError:
+        raise ApiError(422, "unknown_profile", f"unknown model profile {pin!r}") from None
+    if profile.capability != Capability.CHAT:
+        raise ApiError(422, "wrong_capability", f"profile {pin!r} is not a chat model")
+    return pin
+
+
+def _apply_agent_fields(agent: AgentDef, body: AgentIn | AgentCreate, deps: ApiDeps) -> AgentDef:
+    fields: dict[str, Any] = {}
+    if body.description is not None:
+        fields["description"] = body.description
+    if body.instructions is not None:
+        if not body.instructions.strip():
+            raise ApiError(422, "validation_error", "instructions cannot be empty")
+        fields["instructions"] = body.instructions
+    if body.model_profile is not None:
+        fields["model_profile"] = _check_profile(deps, body.model_profile or None)
+    policy = dict(agent.policy)
+    if body.tools is not None:
+        names: list[str] = []
+        perms: dict[str, str] = {}
+        for t in body.tools:
+            tname = t if isinstance(t, str) else t.name
+            perm = "safe" if isinstance(t, str) else t.permission
+            if tname not in perms:
+                names.append(tname)
+            perms[tname] = perm
+        fields["tools"] = names
+        policy["tools"] = perms
+    if body.budgets is not None:
+        budget = dict(agent.budget)
+        if body.budgets.max_usd is not None:
+            budget["max_usd"] = body.budgets.max_usd
+        if body.budgets.max_steps is not None:
+            budget["max_steps"] = body.budgets.max_steps
+        fields["budget"] = budget
+    if policy != agent.policy:
+        fields["policy"] = policy
+    return agent.model_copy(update=fields)
+
+
+async def _persist_agent(deps: ApiDeps, agent: AgentDef, version: int) -> None:
+    row = await deps.repos.agents.get(agent.name)
+    history = list(row["versions"]) if row and row.get("versions") else []
+    if not history and version > 1:
+        # Whatever shipped before the first DB save counts as v1.
+        author = str(agent.source) if agent.source else "file"
+        history = [{"version": 1, "updated_at": None, "author": author}]
+    history = [
+        *history,
+        {"version": version, "updated_at": utcnow().isoformat(), "author": "dashboard"},
+    ]
+    definition = agent.model_dump(mode="json", exclude={"source"})
+    await deps.repos.agents.upsert(agent.name, definition, version, history)
+    deps.agents.upsert(agent, version)
+
+
+@router.post("/agents", status_code=201)
+async def create_agent(body: AgentCreate, deps: Deps) -> dict[str, Any]:
+    if body.name in deps.agents:
+        raise ApiError(409, "conflict", f"agent {body.name!r} already exists")
+    base = AgentDef(name=body.name, description=body.description or "", instructions=body.instructions)
+    agent = _apply_agent_fields(base, body, deps)
+    await _persist_agent(deps, agent, version=1)
+    return await _agent_out(deps, agent)
 
 
 @router.put("/agents/{name}")
-async def update_agent(name: str) -> None:
-    raise _not_implemented("editing agents")
+async def update_agent(name: str, body: AgentIn, deps: Deps) -> dict[str, Any]:
+    if body.name and body.name != name:
+        raise ApiError(422, "validation_error", "agent name cannot be changed")
+    agent = _apply_agent_fields(_agent(deps, name), body, deps)
+    await _persist_agent(deps, agent, version=deps.agents.version(name) + 1)
+    return await _agent_out(deps, agent)
 
 
 class FactEdit(BaseModel):

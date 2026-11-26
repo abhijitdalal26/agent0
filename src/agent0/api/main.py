@@ -65,6 +65,7 @@ async def build_deps() -> ApiDeps:
     mcp = McpRegistry.from_file(settings.config_dir / "mcp.yaml")
     mcp.merge(plugins.mcp_servers())
     agents = AgentCatalog.load([Path("agents"), Path.home() / ".agent0" / "agents", *plugins.agent_dirs()])
+    agents.apply_db(await repos.agents.list())
     return ApiDeps(
         close=lambda: close_pool(pool),
         repos=repos,

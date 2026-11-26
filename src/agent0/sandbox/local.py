@@ -54,12 +54,22 @@ class LocalSandbox:
             self._kill(proc, posix)
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.communicate(timeout=5)
+            self._close_pipes(proc)
             return ExecResult(exit_code=-1, stdout="", stderr=f"timed out after {timeout_s}s", timed_out=True)
+        self._close_pipes(proc)
         return ExecResult(
             exit_code=proc.returncode if proc.returncode is not None else -1,
             stdout=out.decode(errors="replace"),
             stderr=err.decode(errors="replace"),
         )
+
+    @staticmethod
+    def _close_pipes(proc: subprocess.Popen[bytes]) -> None:
+        # communicate() drains but doesn't close; on Windows the lingering pipe
+        # handles warn about unclosed files at GC time.
+        for stream in (proc.stdout, proc.stderr):
+            if stream is not None:
+                stream.close()
 
     @staticmethod
     def _kill(proc: subprocess.Popen[bytes], posix: bool) -> None:
