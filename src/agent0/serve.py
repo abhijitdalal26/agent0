@@ -18,6 +18,7 @@ from agent0.db.pool import apply_schema, close_pool, create_pool
 from agent0.db.repos import PgEventSink
 from agent0.models.registry import resolve_secret, set_secret_resolver
 from agent0.orchestrator.runtime import Runtime, build_runtime
+from agent0.orchestrator.scheduler import Scheduler
 from agent0.secrets import PgSecretStore
 
 log = logging.getLogger("agent0")
@@ -109,7 +110,11 @@ async def build_deps() -> ApiDeps:
     if channel is None:
         log.warning("Telegram disabled: no %s in env or secret store", TELEGRAM_KEY)
 
+    scheduler = Scheduler(rt.repos, orchestrator, rt.agents)
+    scheduler.start()
+
     async def close() -> None:
+        await scheduler.stop()
         if channel is not None:
             await channel.stop()
             if poller is not None:

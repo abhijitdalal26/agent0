@@ -12,6 +12,7 @@ from agent0.api.errors import ApiError, paginate
 from agent0.api.routes_core import MAX_SCAN, Cursor, Limit
 from agent0.api.shapes import iso
 from agent0.core.types import Capability, RunStatus, new_id, utcnow
+from agent0.orchestrator.scheduler import next_run
 
 router = APIRouter()
 
@@ -425,14 +426,20 @@ class ScheduleIn(BaseModel):
 
 
 def _schedule_out(row: dict[str, Any]) -> dict[str, Any]:
-    return {**row, "last_run_at": iso(row.get("last_run_at"))}
+    return {
+        **row,
+        "last_run_at": iso(row.get("last_run_at")),
+        "next_run": iso(row.get("next_run_at")),
+    }
 
 
 def _check_schedule(deps: ApiDeps, body: ScheduleIn) -> None:
     if body.agent not in deps.agents:
         raise ApiError(422, "unknown_agent", f"unknown agent {body.agent!r}")
-    if len(body.cron.split()) != 5:
-        raise ApiError(422, "invalid_cron", "cron must have 5 fields")
+    try:
+        next_run(body.cron, utcnow())
+    except Exception as exc:
+        raise ApiError(422, "invalid_cron", f"invalid cron: {exc}") from None
 
 
 @router.get("/schedules")
@@ -444,7 +451,8 @@ async def list_schedules(deps: Deps, limit: Limit = 100, cursor: Cursor = None) 
 async def create_schedule(body: ScheduleIn, deps: Deps) -> dict[str, Any]:
     _check_schedule(deps, body)
     sid = new_id()
-    await deps.repos.schedules.upsert(sid, body.agent, body.cron, body.prompt, body.enabled)
+    nxt = next_run(body.cron, utcnow()) if body.enabled else None
+    await deps.repos.schedules.upsert(sid, body.agent, body.cron, body.prompt, body.enabled, nxt)
     return _schedule_out(await deps.repos.schedules.get(sid))
 
 
@@ -453,7 +461,8 @@ async def update_schedule(schedule_id: str, body: ScheduleIn, deps: Deps) -> dic
     if await deps.repos.schedules.get(schedule_id) is None:
         raise ApiError(404, "not_found", f"schedule {schedule_id} not found")
     _check_schedule(deps, body)
-    await deps.repos.schedules.upsert(schedule_id, body.agent, body.cron, body.prompt, body.enabled)
+    nxt = next_run(body.cron, utcnow()) if body.enabled else None
+    await deps.repos.schedules.upsert(schedule_id, body.agent, body.cron, body.prompt, body.enabled, nxt)
     return _schedule_out(await deps.repos.schedules.get(schedule_id))
 
 

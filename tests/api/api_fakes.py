@@ -199,7 +199,7 @@ class _Schedules:
     def __init__(self) -> None:
         self.rows: dict[str, dict[str, Any]] = {}
 
-    async def upsert(self, id, agent, cron, prompt, enabled=True) -> None:
+    async def upsert(self, id, agent, cron, prompt, enabled=True, next_run_at=None) -> None:
         self.rows[id] = {
             "id": id,
             "agent": agent,
@@ -207,13 +207,21 @@ class _Schedules:
             "prompt": prompt,
             "enabled": enabled,
             "last_run_at": None,
+            "next_run_at": next_run_at,
         }
 
     async def get(self, id):
         return self.rows.get(id)
 
     async def list(self, enabled_only=False):
-        return list(self.rows.values())
+        return [r for r in self.rows.values() if not enabled_only or r["enabled"]]
+
+    async def set_next_run(self, id, at) -> None:
+        self.rows[id]["next_run_at"] = at
+
+    async def mark_ran(self, id, at, next_run_at=None) -> None:
+        self.rows[id]["last_run_at"] = at
+        self.rows[id]["next_run_at"] = next_run_at
 
     async def delete(self, id) -> bool:
         return self.rows.pop(id, None) is not None

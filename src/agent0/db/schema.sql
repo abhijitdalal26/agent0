@@ -185,7 +185,8 @@ CREATE TABLE IF NOT EXISTS schedules (
     cron text NOT NULL,
     prompt text NOT NULL,
     enabled boolean NOT NULL DEFAULT true,
-    last_run_at timestamptz
+    last_run_at timestamptz,
+    next_run_at timestamptz
 );
 
 CREATE TABLE IF NOT EXISTS secrets (
@@ -199,3 +200,4 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Columns added after the table first shipped; CREATE IF NOT EXISTS won't alter it.
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS definition jsonb;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS versions jsonb NOT NULL DEFAULT '[]';
+ALTER TABLE schedules ADD COLUMN IF NOT EXISTS next_run_at timestamptz;

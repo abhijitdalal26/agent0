@@ -510,12 +510,22 @@ class ExtensionRepo(_Repo):
 
 
 class ScheduleRepo(_Repo):
-    async def upsert(self, id: str, agent: str, cron: str, prompt: str, enabled: bool = True) -> None:
+    async def upsert(
+        self,
+        id: str,
+        agent: str,
+        cron: str,
+        prompt: str,
+        enabled: bool = True,
+        next_run_at: datetime | None = None,
+    ) -> None:
         await self._exec(
-            "INSERT INTO schedules (id, agent, cron, prompt, enabled) VALUES (%s,%s,%s,%s,%s)"
+            "INSERT INTO schedules (id, agent, cron, prompt, enabled, next_run_at)"
+            " VALUES (%s,%s,%s,%s,%s,%s)"
             " ON CONFLICT (id) DO UPDATE SET agent = EXCLUDED.agent, cron = EXCLUDED.cron,"
-            " prompt = EXCLUDED.prompt, enabled = EXCLUDED.enabled",
-            (id, agent, cron, prompt, enabled),
+            " prompt = EXCLUDED.prompt, enabled = EXCLUDED.enabled,"
+            " next_run_at = EXCLUDED.next_run_at",
+            (id, agent, cron, prompt, enabled, next_run_at),
         )
 
     async def get(self, id: str) -> Row | None:
@@ -529,8 +539,14 @@ class ScheduleRepo(_Repo):
     async def set_enabled(self, id: str, enabled: bool) -> bool:
         return await self._exec("UPDATE schedules SET enabled = %s WHERE id = %s", (enabled, id)) > 0
 
-    async def mark_ran(self, id: str, at: datetime) -> None:
-        await self._exec("UPDATE schedules SET last_run_at = %s WHERE id = %s", (at, id))
+    async def set_next_run(self, id: str, at: datetime) -> None:
+        await self._exec("UPDATE schedules SET next_run_at = %s WHERE id = %s", (at, id))
+
+    async def mark_ran(self, id: str, at: datetime, next_run_at: datetime | None = None) -> None:
+        await self._exec(
+            "UPDATE schedules SET last_run_at = %s, next_run_at = %s WHERE id = %s",
+            (at, next_run_at, id),
+        )
 
     async def delete(self, id: str) -> bool:
         return await self._exec("DELETE FROM schedules WHERE id = %s", (id,)) > 0
