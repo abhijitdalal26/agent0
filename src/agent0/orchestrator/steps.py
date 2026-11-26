@@ -116,12 +116,13 @@ def check_plan(spec: TaskSpec) -> TaskSpec:
         for c in spec.criteria
         if (key := _REQUIRED_CONFIG.get(str(c.type))) and key not in c.config
     ]
-    problems += [
-        f"criterion {c.id!r} ({c.type}) config.{key} must be a list of patterns"
-        for c in spec.criteria
-        for key in _PATTERN_KEYS
-        if key in c.config and not isinstance(c.config[key], list)
-    ]
+    for c in spec.criteria:
+        for key in _PATTERN_KEYS:
+            value = c.config.get(key)
+            if isinstance(value, str):
+                c.config[key] = [value]
+            elif value is not None and not isinstance(value, list):
+                problems.append(f"criterion {c.id!r} ({c.type}) config.{key} must be a list of patterns")
     if problems:
         raise ModelRetry("Fix these criteria: " + "; ".join(problems))
     return spec
