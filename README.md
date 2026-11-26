@@ -20,6 +20,7 @@ Architecture: [docs/architecture.md](docs/architecture.md).
 uv sync
 cp .env.example .env              # add GROQ_API_KEY and GEMINI_API_KEY
 uv run agent0 models              # shows which models are ready
+uv run agent0 doctor              # checks DB, keys, sandbox and browser checks end-to-end
 uv run agent0 run "Write a Python script primes.py that prints the first 20 primes, with a test" --sandbox local
 ```
 
@@ -85,6 +86,7 @@ Kill the worker in the middle of a run and start it again: the run continues fro
 ## Demo: compliant ad creative (fictional brand)
 
 ```bash
+uv run agent0 ingest northwind                            # index the brand docs once
 uv run agent0 run --task-file examples/northwind/ad-task.json
 ```
 

@@ -12,12 +12,11 @@ app = typer.Typer(no_args_is_help=True, help="agent0: a multi-model agent harnes
 console = Console()
 
 
-def _run_async(coro: Coroutine[Any, Any, None]) -> None:
+def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     # psycopg async needs a selector loop; Windows defaults to Proactor.
     if sys.platform == "win32":
-        asyncio.run(coro, loop_factory=asyncio.SelectorEventLoop)
-    else:
-        asyncio.run(coro)
+        return asyncio.run(coro, loop_factory=asyncio.SelectorEventLoop)
+    return asyncio.run(coro)
 
 
 async def _load_stored_secrets() -> None:
@@ -243,6 +242,108 @@ def ingest(source: str) -> None:
             await close_pool(pool)
 
     _run_async(go())
+
+
+@app.command("doctor")
+def doctor() -> None:
+    """Check the install: database, keys, models, sandbox, browser checks. Never prints secrets."""
+    import importlib.util
+
+    from agent0.config import get_settings
+    from agent0.models.registry import ModelRegistry, resolve_secret
+
+    settings = get_settings()
+    ok = True
+
+    def check(name: str, good: bool, hint: str = "") -> None:
+        nonlocal ok
+        ok = ok and good
+        mark = "[green]✓[/green]" if good else "[red]✗[/red]"
+        console.print(f"{mark} {name}" + (f"  [dim]{hint}[/dim]" if hint else ""))
+
+    check("config", True, f"sandbox={settings.sandbox} orchestrator={settings.orchestrator}")
+
+    # Database + schema
+    try:
+
+        async def db() -> tuple[bool, int, bool]:
+            from agent0.db.pool import apply_schema, close_pool, create_pool
+
+            pool = await create_pool(settings)
+            try:
+                await apply_schema(pool)
+                async with pool.connection() as conn:
+                    cur = await conn.execute(
+                        "SELECT count(*) AS n FROM information_schema.tables WHERE table_schema='public'"
+                    )
+                    row = await cur.fetchone()
+                    tables = row["n"] if row else 0
+                    cur = await conn.execute(
+                        "SELECT count(*) AS n FROM information_schema.columns"
+                        " WHERE table_name='events' AND column_name='hash'"
+                    )
+                    row = await cur.fetchone()
+                    chained = bool(row and row["n"] == 1)
+                return True, tables, chained
+            finally:
+                await close_pool(pool)
+
+        reachable, tables, chained = _run_async(db())
+        check("postgres", reachable and tables > 10, f"{tables} tables" if reachable else "unreachable")
+        check("event hash chain", chained, "" if chained else "run `agent0 db-init` if missing")
+    except Exception as exc:
+        check("postgres", False, f"{type(exc).__name__}: {exc}")
+
+    # Keys + model profiles (env vars and the dashboard secret store)
+    try:
+        _run_async(_load_stored_secrets())
+        from agent0.core.types import Capability
+
+        registry = ModelRegistry.load(settings.config_dir / "models.yaml")
+        key_envs = sorted({p.key_env for p in registry.all()})
+        missing = [k for k in key_envs if not resolve_secret(k)]
+        check("provider keys", not missing, "missing: " + ", ".join(missing) if missing else "all set")
+        for cap in Capability:
+            n = len(registry.available(cap))
+            if cap == Capability.CHAT:
+                check("chat models", n > 0, f"{n} available")
+            elif n:
+                console.print(f"  [dim]· {cap}: {n} available[/dim]")
+    except Exception as exc:
+        check("model registry", False, str(exc)[:120])
+
+    # Sandbox
+    if settings.sandbox == "docker":
+        try:
+            import docker as docker_sdk
+
+            docker_sdk.from_env().ping()
+            check("docker sandbox", True)
+        except Exception as exc:
+            check("docker sandbox", False, f"{type(exc).__name__} — is Docker Desktop running?")
+    else:
+        check(f"{settings.sandbox} sandbox", True, "local mode: commands run on this machine")
+
+    check(
+        "browser checks",
+        importlib.util.find_spec("playwright") is not None,
+        "install with `uv sync --extra browser`" if importlib.util.find_spec("playwright") is None else "",
+    )
+
+    try:
+        settings.workspace_root.mkdir(parents=True, exist_ok=True)
+        probe = settings.workspace_root / ".doctor"
+        probe.write_text("ok")
+        probe.unlink()
+        check("workspace", True, str(settings.workspace_root))
+    except OSError as exc:
+        check("workspace", False, str(exc)[:120])
+
+    console.print(
+        "\n[bold green]ready[/bold green]"
+        if ok
+        else "\n[bold yellow]issues found — see ✗ above[/bold yellow]"
+    )
 
 
 @app.command("secrets-keygen")
