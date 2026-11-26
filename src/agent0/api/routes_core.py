@@ -44,7 +44,7 @@ async def _checks(deps: Any, run: Run) -> tuple[Any, list[dict[str, Any]], int, 
                         "cost_usd": 0.0,
                     }
                 )
-    total = len(spec.criteria) if spec is not None else len(latest)
+    total = max(len(spec.criteria), len(latest)) if spec is not None else len(latest)
     passed = sum(1 for v in latest.values() if v.status == "pass")
     return spec, verdicts, total, passed
 
@@ -64,7 +64,7 @@ async def _run_views(deps: Any, runs: list[Run]) -> list[dict[str, Any]]:
     for r in runs:
         spec = specs.get(r.task_id)
         latest = {v.check_id: v for v in verdicts.get(r.id, [])}
-        total = len(spec.criteria) if spec is not None else len(latest)
+        total = max(len(spec.criteria), len(latest)) if spec is not None else len(latest)
         passed = sum(1 for v in latest.values() if v.status == "pass")
         views.append(run_out(r, total, passed))
     return views

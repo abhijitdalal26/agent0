@@ -99,6 +99,7 @@ def fallback_chain(ranked: list[ModelProfile], top: int = 4) -> list[ModelProfil
 MODEL_RETRIES = 3
 
 _REQUIRED_CONFIG = {"command": "cmd", "http": "url", "llm_judge": "rubric"}
+_PATTERN_KEYS = ("required_patterns", "forbidden_patterns")
 
 
 def describe_error(exc: BaseException, limit: int = 300) -> str:
@@ -114,6 +115,12 @@ def check_plan(spec: TaskSpec) -> TaskSpec:
         f"criterion {c.id!r} ({c.type}) needs config.{key}"
         for c in spec.criteria
         if (key := _REQUIRED_CONFIG.get(str(c.type))) and key not in c.config
+    ]
+    problems += [
+        f"criterion {c.id!r} ({c.type}) config.{key} must be a list of patterns"
+        for c in spec.criteria
+        for key in _PATTERN_KEYS
+        if key in c.config and not isinstance(c.config[key], list)
     ]
     if problems:
         raise ModelRetry("Fix these criteria: " + "; ".join(problems))
@@ -194,19 +201,31 @@ class Engine:
         await self._record_chat(
             run_id, profiles[0], result.usage, int((time.monotonic() - started) * 1000), True
         )
-        spec = await self._with_required(task, result.output)
+        spec, required = await self._with_required(task, result.output)
         if self.rt.repos:
-            await self.rt.repos.task_specs.upsert(task.id, spec)
+            # task_specs holds the contract (task- and user-authored criteria) so replans
+            # never accumulate the planner's per-attempt extras into the required set.
+            await self.rt.repos.task_specs.upsert(task.id, spec.model_copy(update={"criteria": required}))
         await self.rt.events.emit(run_id, EventType.PLAN_CREATED, spec.model_dump(mode="json"))
         return spec
 
-    async def _with_required(self, task: Task, spec: TaskSpec) -> TaskSpec:
-        required = [Criterion.model_validate(c) for c in task.criteria]
+    async def _with_required(self, task: Task, spec: TaskSpec) -> tuple[TaskSpec, list[Criterion]]:
+        required: list[Criterion] = []
+        seen: set[str] = set()
+        for c in [*task.criteria, *(stored.criteria if (stored := await self._stored(task)) else [])]:
+            criterion = c if isinstance(c, Criterion) else Criterion.model_validate(c)
+            if criterion.id not in seen:
+                seen.add(criterion.id)
+                required.append(criterion)
         if not required:
-            return spec
-        ids = {c.id for c in required}
-        extra = [c for c in spec.criteria if c.id not in ids]
-        return spec.model_copy(update={"criteria": required + extra})
+            return spec, required
+        extra = [c for c in spec.criteria if c.id not in seen]
+        return spec.model_copy(update={"criteria": required + extra}), required
+
+    async def _stored(self, task: Task) -> TaskSpec | None:
+        if self.rt.repos:
+            return await self.rt.repos.task_specs.get(task.id)
+        return None
 
     def _tool_names(self) -> list[str]:
         names = ["shell", "read_file", "write_file", "list_files", "web_fetch"]
