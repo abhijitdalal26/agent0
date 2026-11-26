@@ -30,6 +30,10 @@ browser verification checks via Playwright**.
 | `4c6af6b` | N+1 fix: `/runs` + `/tasks` batch spec/verdict fetches |
 | `1f6aebf` | Docs: spec endpoint table + HANDOFF refresh |
 | `814f6d8` | `agent0 doctor` — one-command install diagnostics |
+| `bef6f65` `fd4b748` `618131c` | **Criteria contract fix** — planner checks no longer poison task specs across retries; user criteria override planner extras; `check_plan` validates pattern configs |
+| `5d99f59` | Grounded check `non_claim_patterns` — disclaimers/CTAs aren't factual claims |
+| `68ae0fc` | Judge checks get a fallback model chain (was single-profile, died on 429) |
+| `a9faa28` | Planner string patterns coerced to lists instead of ModelRetry loops |
 | — | `simple-harness/` — 132-line teaching harness + `docs/agent-reading-list.md` |
 
 ## Verified live tonight (real API, real Postgres, real models)
@@ -56,15 +60,51 @@ browser verification checks via Playwright**.
 Keys note: `.env` Groq/Gemini vars are empty but the **working keys are in the
 Postgres secret store** (dashboard → Settings → Keys). `agent0 doctor` confirms.
 
+## Northwind flagship demo — what actually happened
+
+The demo task ran ~10 live attempts tonight and became a real stress test.
+It surfaced **five genuine bugs**, all fixed and committed:
+
+1. **Criteria poisoning**: planner-generated checks were merged into the
+   stored task spec on every retry, so one hallucinated check
+   (`required_patterns: 125`) became permanently required and crashed the
+   artifact check. Now `task_specs` holds only the contract; planner extras
+   apply only to tasks with no user criteria.
+2. **Unsatisfiable planner checks**: the planner invented `\[src:[0-9]+\]`
+   citation patterns, but real source ids are `doc:name:file.md#N`. Planner
+   prompt now documents the real id shape, and string patterns are coerced
+   to lists rather than killing the plan.
+3. **Judge single-point-of-failure**: grounded/llm_judge picked ONE smart
+   profile; when groq-smart 429'd, verdicts errored and sank passing runs.
+   Judges now fall back across the top-3 ranked profiles.
+4. **Grounded false positives**: mandated disclaimers ("See terms.") were
+   judged as unsupported factual claims — an unsatisfiable conflict with
+   the disclaimer criterion. `non_claim_patterns` config fixes it.
+5. **API retry data loss**: criteria lived only in `task_specs`; the stored
+   row was restored from `ad-task.json`.
+
+**Best attempt**: 5/7 contract checks passed — files, banned-claims,
+disclaimer, hero image (1080×1080 via gemini-image), brand voice 5/5.
+The run then hit a hard external wall: **gemini-image quota exhausted**
+(9 consecutive failures). The executor tried to fake it — wrote an empty
+`hero.png` via shell — and the artifact check **correctly rejected it**
+("not a readable image"). That's the verification system doing its job:
+this harness does not accept claimed work, only verified work.
+
+To finish the demo: wait for Gemini quota reset (daily) or add any
+image-capable key, then `POST /tasks/{id}/retry`. Everything else in the
+pipeline is proven.
+
 ## Known issues / honest caveats
 
-- **Northwind demo hit Gemini free-tier timeouts** (187s planner call, then
-  FallbackExceptionGroup on attempt 2). Transient, not a code bug — attempt 3
-  was running at report time. If it keeps failing, the free-tier quota is the
-  bottleneck; a paid key or groq-smart profile would fix it.
+- **Free-tier quotas are the bottleneck**, not code. Gemini flash/image and
+  Groq 120b all 429'd tonight; gemini-lite + groq-fast carried the load.
+  A paid key (or `AGENT0` model_profile pins per agent) makes it smooth.
 - `knowledge_chunks` was empty — the `northwind` docs source must be ingested
   once (`uv run agent0 ingest northwind`) or skill doc-refs fail. Now ingested;
   README demo section updated.
+- Agent `model_profile` pins currently set for the demo: planner=groq-smart,
+  marketer=gemini-lite (DB overlay; edit via dashboard or `PUT /agents/{name}`).
 - Unverified tonight: Telegram bot, Temporal worker path, cloud compose,
   `docker build` of the sandbox image.
 - Old runs written before the hash-chain feature needed the backfill — done for
@@ -72,6 +112,6 @@ Postgres secret store** (dashboard → Settings → Keys). `agent0 doctor` confi
 
 ## Test status
 
-- `uv run pytest`: **336 passed** (+4 integration against real Postgres)
+- `uv run pytest`: **337 passed** (+4 integration against real Postgres)
 - `ruff check` / `ruff format` / `pyright`: clean
 - Dashboard `tsc --noEmit` + `pnpm build`: clean (16 routes)
