@@ -54,6 +54,22 @@ async def _run_view(deps: Any, run: Run) -> dict[str, Any]:
     return run_out(run, total, passed)
 
 
+async def _run_views(deps: Any, runs: list[Run]) -> list[dict[str, Any]]:
+    """Batch variant of _run_view: two queries for the whole page instead of two per run."""
+    if not runs:
+        return []
+    specs = await deps.repos.task_specs.get_many(list({r.task_id for r in runs}))
+    verdicts = await deps.repos.verdicts.list_for_runs([r.id for r in runs])
+    views = []
+    for r in runs:
+        spec = specs.get(r.task_id)
+        latest = {v.check_id: v for v in verdicts.get(r.id, [])}
+        total = len(spec.criteria) if spec is not None else len(latest)
+        passed = sum(1 for v in latest.values() if v.status == "pass")
+        views.append(run_out(r, total, passed))
+    return views
+
+
 def _status(value: str | None) -> str | None:
     if value is None:
         return None
@@ -117,11 +133,20 @@ async def list_tasks(
         and (until is None or t.created_at < until)
     ]
     page = paginate(tasks, limit, cursor)
-    items = []
-    for t in page["items"]:
-        runs = await deps.repos.runs.list(task_id=t.id, limit=MAX_SCAN)
-        latest = await _run_view(deps, runs[0]) if runs else None
-        items.append(task_out(t, len(runs), latest))
+    page_tasks = page["items"]
+    runs_by_task: dict[str, list[Run]] = {}
+    for r in await deps.repos.runs.list(limit=MAX_SCAN):
+        runs_by_task.setdefault(r.task_id, []).append(r)
+    latest_runs = [v[0] for v in runs_by_task.values() if v]
+    latest_views = {v["id"]: v for v in await _run_views(deps, latest_runs)}
+    items = [
+        task_out(
+            t,
+            len(runs_by_task.get(t.id, [])),
+            latest_views.get(runs_by_task[t.id][0].id) if t.id in runs_by_task else None,
+        )
+        for t in page_tasks
+    ]
     return {"items": items, "next_cursor": page["next_cursor"]}
 
 
@@ -204,7 +229,7 @@ async def list_runs(
     runs = await deps.repos.runs.list(task_id=task_id, status=_status(status), limit=limit + 1, offset=offset)
     more = len(runs) > limit
     return {
-        "items": [await _run_view(deps, r) for r in runs[:limit]],
+        "items": await _run_views(deps, runs[:limit]),
         "next_cursor": encode_cursor(str(offset + limit)) if more else None,
     }
 

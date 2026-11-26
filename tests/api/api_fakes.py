@@ -76,6 +76,9 @@ class _Specs:
     async def get(self, task_id: str) -> FakeSpec | None:
         return self.rows.get(task_id)
 
+    async def get_many(self, task_ids: list[str]) -> dict[str, FakeSpec]:
+        return {t: self.rows[t] for t in task_ids if t in self.rows}
+
     async def upsert(self, task_id: str, spec: Any) -> None:
         self.rows[task_id] = spec
 
@@ -104,6 +107,9 @@ class _Verdicts:
 
     async def list(self, run_id: str) -> list[FakeVerdict]:
         return self.rows.get(run_id, [])
+
+    async def list_for_runs(self, run_ids: list[str]) -> dict[str, list[FakeVerdict]]:
+        return {r: self.rows.get(r, []) for r in run_ids}
 
 
 class _Approvals:

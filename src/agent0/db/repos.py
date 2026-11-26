@@ -188,6 +188,20 @@ class TaskSpecRepo(_Repo):
 
         return TaskSpec.model_validate(row) if row else None
 
+    async def get_many(self, task_ids: list[str]) -> dict[str, TaskSpec]:
+        from agent0.verify.base import TaskSpec
+
+        if not task_ids:
+            return {}
+        rows = await self._all(
+            "SELECT task_id, goal, steps, criteria FROM task_specs WHERE task_id = ANY(%s)",
+            (task_ids,),
+        )
+        return {
+            r["task_id"]: TaskSpec.model_validate({k: r[k] for k in ("goal", "steps", "criteria")})
+            for r in rows
+        }
+
 
 def _event(row: Row) -> Event:
     return Event.model_validate({**row, "type": EventType(row["type"])})
@@ -224,9 +238,7 @@ class EventRepo(_Repo):
             )
             row = await cur.fetchone()  # type: ignore[arg-type]
             assert row is not None  # RETURNING always yields the inserted row
-            digest = event_hash(
-                run_id, row["seq"], type, row["payload"], row["created_at"], prev_hash
-            )
+            digest = event_hash(run_id, row["seq"], type, row["payload"], row["created_at"], prev_hash)
             await conn.execute(
                 "UPDATE events SET hash = %s, prev_hash = %s WHERE id = %s",
                 (digest, prev_hash, event_id),
@@ -297,6 +309,27 @@ class VerdictRepo(_Repo):
             " ORDER BY id",
             (run_id,),
         )
+        return self._verdicts(rows)
+
+    async def list_for_runs(self, run_ids: list[str]) -> dict[str, list[Verdict]]:
+        from agent0.verify.base import Verdict
+
+        if not run_ids:
+            return {}
+        rows = await self._all(
+            "SELECT run_id, check_id, type, status, evidence, score, cost_usd FROM verdicts"
+            " WHERE run_id = ANY(%s) ORDER BY id",
+            (run_ids,),
+        )
+        out: dict[str, list[Verdict]] = {}
+        for r in rows:
+            out.setdefault(r["run_id"], []).append(
+                Verdict.model_validate({k: r[k] for k in r if k != "run_id"})
+            )
+        return out
+
+    @staticmethod
+    def _verdicts(rows: list[Row]) -> list[Verdict]:
         from agent0.verify.base import Verdict
 
         return [Verdict.model_validate(r) for r in rows]
