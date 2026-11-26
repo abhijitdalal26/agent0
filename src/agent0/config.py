@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     telegram_bot_token: str | None = None
     telegram_allowed_users: list[str] = []
+    daily_budget_usd: float | None = None
 
 
 @lru_cache

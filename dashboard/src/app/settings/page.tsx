@@ -102,7 +102,9 @@ export default function SettingsPage() {
           <DollarSign className="w-4 h-4 text-emerald-500" /> Daily budget
         </h2>
         <p className="text-xs text-muted-foreground">
-          The daily spend cap is configured on the server, not from the dashboard. Current consumption against the cap is on the{" "}
+          Set <code className="font-mono text-[11px] bg-muted px-1 py-0.5 rounded">AGENT0_DAILY_BUDGET_USD</code> on the
+          server to cap total model spend per UTC day. Once today's usage reaches the cap, new tasks are rejected and
+          running tasks stop at the next attempt. Current consumption is on the{" "}
           <Link href="/usage" className="underline text-foreground">
             Usage
           </Link>{" "}

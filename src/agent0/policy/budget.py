@@ -2,11 +2,27 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from pydantic import PrivateAttr
 
-from agent0.core.types import Budget
+from agent0.core.types import Budget, utcnow
+
+
+def today_start() -> datetime:
+    return utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+async def daily_cap_reason(settings: Any, repos: Any) -> str | None:
+    """Reason the daily spend cap blocks new work, or None when it's off/unmeasurable."""
+    cap = getattr(settings, "daily_budget_usd", None)
+    if not cap or repos is None:
+        return None
+    spent = float(await repos.usage.total_since(today_start()))
+    if spent >= cap:
+        return f"daily budget cap reached: ${spent:.4f} of ${cap:.2f} spent today (UTC)"
+    return None
 
 
 class BudgetExceeded(Exception):

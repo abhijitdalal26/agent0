@@ -366,6 +366,13 @@ class UsageRepo(_Repo):
             ),
         )
 
+    async def total_since(self, since: datetime) -> float:
+        row = await self._one(
+            "SELECT COALESCE(SUM(cost_usd), 0) AS total FROM usage WHERE created_at >= %s",
+            (since,),
+        )
+        return float(row["total"]) if row else 0.0
+
     async def list(
         self, since: datetime | None = None, until: datetime | None = None, limit: int = 1000
     ) -> list[Row]:

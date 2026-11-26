@@ -293,7 +293,20 @@ def test_agents_schedules_usage_and_stubs(env):
     assert len(env.client.get(f"{BASE}/schedules").json()["items"]) == 1
     assert env.client.delete(f"{BASE}/schedules/{sid}").status_code == 204
     assert env.client.delete(f"{BASE}/schedules/{sid}").status_code == 404
+    env.repos.usage.rows = [
+        {"id": 1, "provider": "groq", "capability": "chat", "agent": "executor", "cost_usd": 0.01},
+        {"id": 2, "provider": "gemini", "capability": "vision", "agent": "planner", "cost_usd": 0.02},
+    ]
+    assert len(env.client.get(f"{BASE}/usage").json()["items"]) == 2
+    assert env.client.get(f"{BASE}/usage?provider=groq").json()["items"][0]["id"] == "1"
+    assert env.client.get(f"{BASE}/usage?capability=vision").json()["items"][0]["agent"] == "planner"
+    assert env.client.get(f"{BASE}/usage?agent=nope").json()["items"] == []
     summary = env.client.get(f"{BASE}/usage/summary?group_by=provider").json()
     assert summary["items"][0]["provider"] == "groq"
     assert env.client.get(f"{BASE}/usage/summary?group_by=zzz").status_code == 422
-    assert env.client.get(f"{BASE}/usage").status_code == 501
+
+    env.repos.usage.today_total = 5.0
+    env.settings.daily_budget_usd = 1.0
+    capped = env.client.post(f"{BASE}/tasks", json={"prompt": "hi"})
+    assert capped.status_code == 429
+    assert capped.json()["error"]["code"] == "daily_budget_exceeded"

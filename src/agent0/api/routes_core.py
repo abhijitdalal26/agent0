@@ -13,6 +13,7 @@ from agent0.api.deps import Deps
 from agent0.api.errors import ApiError, decode_cursor, decode_offset, encode_cursor, paginate
 from agent0.api.shapes import approval_out, artifact_out, event_out, iso, run_out, task_out
 from agent0.core.types import Budget, NotifyLevel, Run, RunStatus, Task, utcnow
+from agent0.policy.budget import daily_cap_reason
 
 router = APIRouter()
 
@@ -139,6 +140,8 @@ class TaskCreate(BaseModel):
 async def create_task(body: TaskCreate, deps: Deps) -> dict[str, Any]:
     if body.agent not in deps.agents:
         raise ApiError(422, "unknown_agent", f"unknown agent {body.agent!r}")
+    if reason := await daily_cap_reason(deps.settings, deps.repos):
+        raise ApiError(429, "daily_budget_exceeded", reason)
     budget = Budget.model_validate(body.budget.model_dump(exclude_none=True) if body.budget else {})
     title = body.title or " ".join(body.prompt.split())[:80]
     task = Task(

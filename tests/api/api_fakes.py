@@ -133,6 +133,16 @@ class _Artifacts:
 
 
 class _Usage:
+    def __init__(self) -> None:
+        self.rows: list[dict[str, Any]] = []
+        self.today_total = 0.0
+
+    async def total_since(self, since) -> float:
+        return self.today_total
+
+    async def list(self, since=None, until=None, limit=1000):
+        return self.rows[:limit]
+
     async def summary(self, group_by=("provider",), since=None, until=None):
         return [{group_by[0]: "groq", "calls": 2, "cost_usd": 0.5}]
 

@@ -18,7 +18,7 @@ from agent0.models.chat import build_fallback, build_model
 from agent0.models.usage import Units, UsageMeter, compute_cost, record_from_run_usage
 from agent0.orchestrator.runtime import Runtime
 from agent0.orchestrator.tools import RunDeps, knowledge_toolset, media_toolset, summarize_args
-from agent0.policy.budget import BudgetExceeded, BudgetMeter
+from agent0.policy.budget import BudgetExceeded, BudgetMeter, daily_cap_reason
 from agent0.policy.permissions import ApprovalRequired, Decision, Policy
 from agent0.tools import build_toolset
 from agent0.tools.deps import call_key
@@ -248,6 +248,9 @@ class Engine:
 
         agent_def = self.rt.agents.get(task.agent)
         budget = agent_def.effective_budget(task.budget)
+        if reason := await daily_cap_reason(self.rt.settings, self.rt.repos):
+            await self.rt.events.emit(run_id, EventType.BUDGET_EXCEEDED, {"reason": reason})
+            return AttemptResult(status="budget", error=reason)
         try:
             profiles = _agent_profiles(self.rt, agent_def)
         except NoProfileAvailable as exc:
