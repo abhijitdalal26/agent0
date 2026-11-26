@@ -6,6 +6,7 @@ import httpx
 
 from agent0.verify.base import Check, CheckType
 from agent0.verify.checks.artifact import ArtifactCheck
+from agent0.verify.checks.browser import BrowserCheck
 from agent0.verify.checks.command import CommandCheck
 from agent0.verify.checks.grounded import GroundedCheck
 from agent0.verify.checks.http import HttpCheck
@@ -46,6 +47,7 @@ def default_registry(
     registry.register(CheckType.COMMAND, CommandCheck())
     registry.register(CheckType.ARTIFACT, ArtifactCheck())
     registry.register(CheckType.HTTP, HttpCheck(transport=http_transport))
+    registry.register(CheckType.BROWSER, BrowserCheck())
     registry.register(CheckType.GROUNDED, GroundedCheck(judge_factory))
     registry.register(CheckType.LLM_JUDGE, LlmJudgeCheck(judge_factory))
     registry.register(CheckType.HUMAN, HumanCheck())

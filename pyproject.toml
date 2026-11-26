@@ -29,6 +29,9 @@ dependencies = [
     "croniter>=7.0.0",
 ]
 
+[project.optional-dependencies]
+browser = ["playwright>=1.49"]
+
 [project.scripts]
 agent0 = "agent0.cli:app"
 

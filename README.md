@@ -3,7 +3,8 @@
 A general-purpose, multi-model agent harness that **completes tasks and verifies the work**.
 
 - **Any model, any kind**: chat, vision, image generation, voice (TTS), speech-to-text, embeddings. Add a provider as one entry in `config/models.yaml`; the router picks the best available model for each capability, and the judge always comes from a different provider than the worker.
-- **Plan → execute → verify → retry**: a task is done only when its checks pass. Cheap deterministic checks run first; an LLM judge runs only when a check needs it.
+- **Plan → execute → verify → retry**: a task is done only when its checks pass. Cheap deterministic checks run first (command, artifact, HTTP, and real-browser checks via Playwright); an LLM judge runs only when a check needs it.
+- **Tamper-evident audit trail**: every run's event log is hash-chained; `GET /runs/{id}/verify` (or the "Verify trail" button in the dashboard) proves no event was altered after the fact.
 - **Grounded answers**: agents read connected databases (read-only) and documents, cite `[src:<id>]`, and the `grounded` check verifies every claim.
 - **Approvals**: risky tool calls and outward-facing results wait for a human (Telegram buttons, dashboard or terminal).
 - **Memory** in Postgres: instructions, past runs, and learned facts that are expired, never deleted.
@@ -44,6 +45,15 @@ Set in `.env`:
 | `AGENT0_TELEGRAM_ALLOWED_USERS` | JSON list of your Telegram user ids or @usernames |
 | `AGENT0_SANDBOX` | `docker` (default) or `local` |
 | `AGENT0_ORCHESTRATOR` | `local` (default) or `temporal` |
+| `AGENT0_DAILY_BUDGET_USD` | Optional daily spend cap across all runs |
+
+Schedules (`/schedules` in the dashboard or `POST /schedules`) run prompts on a cron expression — `next_run` is computed and shown before saving.
+
+Browser-based verification checks need the optional extra:
+
+```bash
+uv sync --extra browser && uv run playwright install chromium
+```
 
 In Telegram: `/task <what to do>`, `/status`, `/stop <run id>`. Approvals arrive as buttons.
 
