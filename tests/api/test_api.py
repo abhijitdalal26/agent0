@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 
 from agent0.api import create_app
 from agent0.config import Settings
-from agent0.core.types import Artifact, RunStatus, utcnow
+from agent0.core.events import MemoryEventSink
+from agent0.core.types import Artifact, Event, EventType, RunStatus, utcnow
 
 BASE = "/api/v1"
 
@@ -140,6 +141,23 @@ async def test_events_stop_stats(env):
     assert stats["running"] == 1 and stats["spend_today_usd"] == 0
     assert env.client.post(f"{BASE}/runs/{run.id}/stop").json()["run"]["status"] == "stopped"
     assert env.client.post(f"{BASE}/runs/{run.id}/stop").status_code == 409
+
+
+async def test_run_event_chain_verify(env):
+    run = await env.repos.seed_run()
+    sink = MemoryEventSink()
+    await sink.emit(run.id, EventType.RUN_STARTED, {"task_id": run.task_id})
+    await sink.emit(run.id, EventType.TOOL_CALL, {"tool": "shell", "args": {"command": "ls"}})
+    env.repos.events.rows.extend(sink.events)
+
+    body = env.client.get(f"{BASE}/runs/{run.id}/verify").json()
+    assert body["ok"] is True and body["events"] == 2 and body["head_hash"]
+
+    # An unchained row (e.g. written before hashing existed) fails verification.
+    env.repos.events.rows.append(Event(run_id=run.id, seq=3, type=EventType.ERROR, payload={}))
+    body = env.client.get(f"{BASE}/runs/{run.id}/verify").json()
+    assert body["ok"] is False and body["bad_seq"] == 3
+    assert env.client.get(f"{BASE}/runs/nope/verify").status_code == 404
 
 
 async def test_approvals(env):

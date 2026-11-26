@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS events (
     type text NOT NULL,
     payload jsonb NOT NULL DEFAULT '{}',
     created_at timestamptz NOT NULL DEFAULT now(),
+    prev_hash text,
+    hash text,
     UNIQUE (run_id, seq)
 );
 CREATE INDEX IF NOT EXISTS events_created_idx ON events (created_at);
@@ -201,3 +203,5 @@ CREATE TABLE IF NOT EXISTS secrets (
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS definition jsonb;
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS versions jsonb NOT NULL DEFAULT '[]';
 ALTER TABLE schedules ADD COLUMN IF NOT EXISTS next_run_at timestamptz;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS prev_hash text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS hash text;

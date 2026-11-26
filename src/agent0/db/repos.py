@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.types.json import Jsonb
 
+from agent0.core.events import event_hash
 from agent0.core.types import Artifact, Budget, Event, EventType, Run, Task, new_id
 from agent0.db.pool import PgPool
 from agent0.models.base import ModelProfile, UsageRecord
@@ -209,13 +210,28 @@ class EventRepo(_Repo):
         async with self.pool.connection() as conn, conn.transaction():
             await conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (run_id,))
             cur = await conn.execute(
+                "SELECT hash FROM events WHERE run_id = %s ORDER BY seq DESC LIMIT 1",
+                (run_id,),
+            )
+            prev_row = await cur.fetchone()
+            prev_hash = prev_row["hash"] if prev_row else None
+            cur = await conn.execute(
                 "INSERT INTO events (id, run_id, seq, type, payload)"
                 " SELECT %s::text, %s::text, COALESCE(MAX(seq), 0) + 1, %s::text, %s::jsonb"
                 " FROM events WHERE run_id = %s"
                 " RETURNING *",
                 (event_id, run_id, str(type), Jsonb(payload or {}), run_id),
             )
-            event = _event(await cur.fetchone())  # type: ignore[arg-type]
+            row = await cur.fetchone()  # type: ignore[arg-type]
+            assert row is not None  # RETURNING always yields the inserted row
+            digest = event_hash(
+                run_id, row["seq"], type, row["payload"], row["created_at"], prev_hash
+            )
+            await conn.execute(
+                "UPDATE events SET hash = %s, prev_hash = %s WHERE id = %s",
+                (digest, prev_hash, event_id),
+            )
+            event = _event({**row, "hash": digest, "prev_hash": prev_hash})
             if notify:
                 await conn.execute("SELECT pg_notify(%s, %s)", (EVENTS_CHANNEL, _event_notice(event)))
         return event

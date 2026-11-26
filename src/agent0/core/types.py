@@ -61,6 +61,8 @@ class Event(BaseModel):
     type: EventType
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utcnow)
+    prev_hash: str | None = None
+    hash: str | None = None
 
 
 class Budget(BaseModel):

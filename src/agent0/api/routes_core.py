@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from agent0.api.deps import Deps
 from agent0.api.errors import ApiError, decode_cursor, decode_offset, encode_cursor, paginate
 from agent0.api.shapes import approval_out, artifact_out, event_out, iso, run_out, task_out
+from agent0.core.events import verify_chain
 from agent0.core.types import Budget, NotifyLevel, Run, RunStatus, Task, utcnow
 from agent0.policy.budget import daily_cap_reason
 
@@ -236,6 +237,21 @@ async def run_events(
     return {
         "items": [event_out(e) for e in events[:limit]],
         "next_cursor": encode_cursor(str(events[limit - 1].seq)) if len(events) > limit else None,
+    }
+
+
+@router.get("/runs/{run_id}/verify")
+async def verify_run_events(run_id: str, deps: Deps) -> dict[str, Any]:
+    """Recompute the event hash chain: proof the recorded trail wasn't altered after the fact."""
+    await _get_run(deps, run_id)
+    events = await deps.repos.events.list(run_id, limit=MAX_SCAN)
+    ok, bad_seq = verify_chain(events)
+    head = events[-1].hash if events else None
+    return {
+        "ok": ok,
+        "events": len(events),
+        "bad_seq": bad_seq,
+        "head_hash": head,
     }
 
 
