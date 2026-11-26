@@ -3,10 +3,10 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Cpu, FolderOpen, RotateCcw, ShieldAlert, Square } from "lucide-react";
-import { getRun, getRunArtifacts, getRunCriteriaAndVerdicts, getRunEvents, retryTask, stopRun } from "@/lib/api";
+import { ArrowLeft, Cpu, FolderOpen, RotateCcw, ShieldAlert, ShieldCheck, ShieldX, Square } from "lucide-react";
+import { getRun, getRunArtifacts, getRunCriteriaAndVerdicts, getRunEvents, getRunVerify, retryTask, stopRun } from "@/lib/api";
 import { useEventStream } from "@/lib/sse";
-import type { Artifact, Criterion, Run, RunEvent, Task, Verdict } from "@/types";
+import type { Artifact, Criterion, Run, RunEvent, RunVerify, Task, Verdict } from "@/types";
 import { formatCurrency, formatTokens } from "@/lib/utils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { EventTimeline } from "@/components/EventTimeline";
@@ -42,6 +42,8 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"stop" | "retry" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [verify, setVerify] = useState<RunVerify | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const lastSeq = useRef(0);
   const artifactsRef = useRef<HTMLDivElement>(null);
@@ -138,6 +140,17 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     }
   };
 
+  const checkChain = async () => {
+    setVerifyBusy(true);
+    try {
+      setVerify(await getRunVerify(runId));
+    } catch {
+      setVerify(null);
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
   const retry = async () => {
     if (!run) return;
     setBusy("retry");
@@ -209,6 +222,27 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
                 <RotateCcw className="w-3.5 h-3.5" />{busy === "retry" ? "Starting…" : "Retry"}
               </button>
             )}
+            <button
+              onClick={checkChain}
+              disabled={verifyBusy}
+              title={verify?.head_hash ? `head ${verify.head_hash}` : "Recompute the hash chain over every event in this run"}
+              className={`px-3 py-2 sm:py-1.5 text-xs font-medium border rounded-lg flex items-center gap-1.5 disabled:opacity-50 ${
+                verify === null
+                  ? "text-muted-foreground hover:text-foreground bg-card border-border hover:bg-secondary"
+                  : verify.ok
+                    ? "text-emerald-500 bg-emerald-500/10 border-emerald-500/30"
+                    : "text-rose-500 bg-rose-500/10 border-rose-500/30"
+              }`}
+            >
+              {verify === null ? (
+                <ShieldCheck className="w-3.5 h-3.5" />
+              ) : verify.ok ? (
+                <ShieldCheck className="w-3.5 h-3.5" />
+              ) : (
+                <ShieldX className="w-3.5 h-3.5" />
+              )}
+              {verifyBusy ? "Verifying…" : verify === null ? "Verify trail" : verify.ok ? `Chain intact · ${verify.events}` : `Broken @ seq ${verify.bad_seq}`}
+            </button>
             <button
               onClick={() => artifactsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
               className="px-3 py-2 sm:py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-card border border-border hover:bg-secondary rounded-lg flex items-center gap-1.5"

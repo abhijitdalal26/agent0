@@ -101,6 +101,15 @@ export interface RunEvent {
   created_at: string;
   type: RunEventType;
   payload: Record<string, unknown>;
+  prev_hash?: string | null;
+  hash?: string | null;
+}
+
+export interface RunVerify {
+  ok: boolean;
+  events: number;
+  bad_seq: number | null;
+  head_hash: string | null;
 }
 
 export interface Approval {

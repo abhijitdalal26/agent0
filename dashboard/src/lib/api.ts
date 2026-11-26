@@ -18,6 +18,7 @@ import type {
   RouterPreview,
   Run,
   RunEvent,
+  RunVerify,
   Schedule,
   ScheduleInput,
   SecretItem,
@@ -275,6 +276,10 @@ export async function getRunEvents(runId: string, afterSeq = 0): Promise<RunEven
     after = Number(res.next_cursor);
   }
   return out;
+}
+
+export async function getRunVerify(runId: string): Promise<RunVerify> {
+  return apiFetch<RunVerify>(`/runs/${enc(runId)}/verify`);
 }
 
 export async function stopRun(runId: string): Promise<{ success: boolean }> {
