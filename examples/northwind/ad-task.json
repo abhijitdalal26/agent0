@@ -1,20 +1,102 @@
 {
   "title": "Northwind oral program Instagram ads",
-  "prompt": "Write 3 Instagram ad variants for the Northwind Oral Program, launching Monday. Use only facts from the northwind knowledge source and cite them as [src:<id>]. Each variant must end with a clear call to action. Follow the ad-compliance skill. Save the variants to ads.md (one '## Variant N' section each, primary text under 125 characters) and a square 1080x1080 hero image to hero.png.",
+  "prompt": "Write 3 Instagram ad variants for the Northwind Oral Program, launching Monday. Use only facts from the northwind knowledge source and cite factual claims as [src:<id>]; leave calls to action and disclaimers uncited. Each variant must end with a clear call to action. Follow the ad-compliance skill. Save the variants to ads.md (one '## Variant N' section each, primary text under 125 characters) and a square 1080x1080 hero image to hero.png.",
   "agent": "marketer",
   "criteria": [
-    {"id": "files", "type": "artifact", "description": "ads.md exists with 3 variants",
-     "config": {"path": "ads.md", "required_patterns": ["## Variant 1", "## Variant 2", "## Variant 3"]}},
-    {"id": "banned", "type": "artifact", "description": "no banned claims",
-     "config": {"path": "ads.md", "forbidden_patterns": ["\\bguarantee", "\\bcur(e|es|ed|ing)\\b","lose \\d+ ?(lbs|pounds)", "FDA[- ]approved", "clinically proven", "no (doctor|exam) (needed|required)", "100% effective"]}},
-    {"id": "disclaimer", "type": "artifact", "description": "required disclaimer present",
-     "config": {"path": "ads.md", "required_patterns": ["(clinicians decide whether treatment is right for you|Rx may apply\\. See terms\\.)", "Not available in all states|See terms"]}},
-    {"id": "hero", "type": "artifact", "description": "hero image is 1080x1080",
-     "config": {"path": "hero.png", "image": {"width": 1080, "height": 1080}}},
-    {"id": "facts", "type": "grounded", "description": "every product fact is backed by a cited source",
-     "config": {"path": "ads.md", "non_claim_patterns": ["see terms", "rx may apply", "not available in all states", "clinicians decide"]}},
-    {"id": "voice", "type": "llm_judge", "description": "matches Northwind brand voice",
-     "config": {"path": "ads.md", "rubric": ["Warm, plain, short sentences", "No fear, shame or body-image language", "Clear call to action"], "threshold": 4}},
-    {"id": "signoff", "type": "human", "description": "a human approves before launch"}
+    {
+      "id": "files",
+      "type": "artifact",
+      "description": "ads.md exists with 3 variants",
+      "config": {
+        "path": "ads.md",
+        "required_patterns": [
+          "## Variant 1",
+          "## Variant 2",
+          "## Variant 3"
+        ]
+      }
+    },
+    {
+      "id": "banned",
+      "type": "artifact",
+      "description": "no banned claims",
+      "config": {
+        "path": "ads.md",
+        "forbidden_patterns": [
+          "\\bguarantee",
+          "\\bcur(e|es|ed|ing)\\b",
+          "lose \\d+ ?(lbs|pounds)",
+          "FDA[- ]approved",
+          "clinically proven",
+          "no (doctor|exam) (needed|required)",
+          "100% effective"
+        ]
+      }
+    },
+    {
+      "id": "disclaimer",
+      "type": "artifact",
+      "description": "required disclaimer present",
+      "config": {
+        "path": "ads.md",
+        "required_patterns": [
+          "(clinicians decide whether treatment is right for you|Rx may apply\\. See terms\\.)",
+          "Not available in all states|See terms"
+        ]
+      }
+    },
+    {
+      "id": "hero",
+      "type": "artifact",
+      "description": "hero image is 1080x1080",
+      "config": {
+        "path": "hero.png",
+        "image": {
+          "width": 1080,
+          "height": 1080
+        }
+      }
+    },
+    {
+      "id": "facts",
+      "type": "grounded",
+      "description": "every product fact is backed by a cited source",
+      "config": {
+        "path": "ads.md",
+        "non_claim_patterns": [
+          "see terms",
+          "rx may apply",
+          "not available in all states",
+          "clinicians decide",
+          "see if",
+          "find out",
+          "check if",
+          "learn whether",
+          "get started",
+          "sign up",
+          "take the assessment",
+          "right for you"
+        ]
+      }
+    },
+    {
+      "id": "voice",
+      "type": "llm_judge",
+      "description": "matches Northwind brand voice",
+      "config": {
+        "path": "ads.md",
+        "rubric": [
+          "Warm, plain, short sentences",
+          "No fear, shame or body-image language",
+          "Clear call to action"
+        ],
+        "threshold": 4
+      }
+    },
+    {
+      "id": "signoff",
+      "type": "human",
+      "description": "a human approves before launch"
+    }
   ]
 }
