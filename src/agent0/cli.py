@@ -244,6 +244,39 @@ def ingest(source: str) -> None:
     _run_async(go())
 
 
+@app.command("demo")
+def demo(
+    task: str = typer.Option("brief", help="examples/<name>/task.json to run after setup."),
+    setup_only: bool = typer.Option(False, "--setup-only", help="Prepare DB and knowledge, don't run."),
+) -> None:
+    """One-command demo: apply the schema, ingest knowledge sources, run an example task."""
+    import json
+
+    from agent0.config import get_settings
+    from agent0.db.pool import apply_schema, close_pool, create_pool
+    from agent0.knowledge.registry import load_sources
+
+    async def setup() -> None:
+        s = get_settings()
+        pool = await create_pool(s)
+        try:
+            await apply_schema(pool)
+            for name, src in load_sources(s.config_dir / "knowledge.yaml", pool=pool).items():
+                if ingest := getattr(src, "ingest", None):
+                    console.print(f"[dim]ingest {name}: {await ingest()} chunks[/dim]")
+        finally:
+            await close_pool(pool)
+
+    _run_async(_load_stored_secrets())
+    _run_async(setup())
+    if setup_only:
+        console.print(f"[green]ready[/green] — task file: `examples/{task}/task.json`")
+        return
+    path = f"examples/{task}/task.json"
+    spec = json.loads(open(path, encoding="utf-8").read())
+    _run_async(_run(spec["prompt"], spec.get("agent", "executor"), 3, 1.0, None, spec))
+
+
 @app.command("doctor")
 def doctor() -> None:
     """Check the install: database, keys, models, sandbox, browser checks. Never prints secrets."""
