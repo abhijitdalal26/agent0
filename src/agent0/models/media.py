@@ -16,6 +16,7 @@ from pydantic_ai.providers.google import GoogleProvider
 from agent0.core.types import Capability
 from agent0.models.base import ModelProfile
 from agent0.models.chat import api_key
+from agent0.models.cooldown import default_tracker
 from agent0.models.usage import Units, UsageMeter
 
 # An adapter does the provider call and returns (result, units consumed). Register a new provider by
@@ -118,6 +119,11 @@ ADAPTERS: dict[Capability, dict[str, Adapter]] = {
 }
 
 
+def _is_rate_limit(exc: Exception) -> bool:
+    code = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    return code == 429 or "ratelimit" in type(exc).__name__.lower()
+
+
 async def _run(profile: ModelProfile, capability: Capability, meter: UsageMeter | None, *args: Any) -> Any:
     if profile.capability != capability:
         raise ValueError(f"profile {profile.name} has capability {profile.capability}, need {capability}")
@@ -125,13 +131,18 @@ async def _run(profile: ModelProfile, capability: Capability, meter: UsageMeter 
         adapter = ADAPTERS[capability][profile.provider]
     except KeyError:
         raise ValueError(f"no {capability.value} adapter for provider {profile.provider!r}") from None
-    if meter is None:
-        value, _ = await adapter(profile, *args)
+    try:
+        if meter is None:
+            value, _ = await adapter(profile, *args)
+            return value
+        async with meter.track(profile) as units:
+            value, used = await adapter(profile, *args)
+            units.__dict__.update(used.__dict__)
         return value
-    async with meter.track(profile) as units:
-        value, used = await adapter(profile, *args)
-        units.__dict__.update(used.__dict__)
-    return value
+    except Exception as exc:
+        if _is_rate_limit(exc):
+            default_tracker().record(profile.name)
+        raise
 
 
 async def generate_image(

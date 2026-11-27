@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from agent0.core.types import Capability
 from agent0.models.base import ModelProfile, NoProfileAvailable, Preference
+from agent0.models.cooldown import CooldownTracker, default_tracker
 from agent0.models.registry import ModelRegistry
 
 # (tag, cost, context) weights per preference
@@ -37,8 +38,9 @@ class Ranked:
 
 
 class Router:
-    def __init__(self, registry: ModelRegistry) -> None:
+    def __init__(self, registry: ModelRegistry, cooldowns: CooldownTracker | None = None) -> None:
         self.registry = registry
+        self.cooldowns = cooldowns if cooldowns is not None else default_tracker()
 
     def rank(
         self,
@@ -69,6 +71,9 @@ class Router:
             xs = _norm(ctxs, float(p.context_window or 0), higher_is_better=True)
             out.append(Ranked(p, w_tag * tag + w_cost * cs + w_ctx * xs, tag, cs, xs))
         out.sort(key=lambda r: (-r.score, r.profile.name))
+        # Rate-limited profiles sink to the bottom but stay eligible: when every
+        # candidate is cooling, the least-bad one still gets picked.
+        out.sort(key=lambda r: self.cooldowns.cooling(r.profile.name) > 0)
         return out
 
     def pick(
@@ -103,6 +108,9 @@ class Router:
             parts.append(f"excluded provider {exclude_provider}")
         if needs_context:
             parts.append(f"needs context >= {needs_context}")
+        cooling = [r.profile.name for r in ranked if self.cooldowns.cooling(r.profile.name) > 0]
+        if cooling:
+            parts.append(f"cooled down: {', '.join(cooling)}")
         if len(ranked) > 1:
             parts.append(f"runner-up {ranked[1].profile.name} ({ranked[1].score:.2f})")
         return "; ".join(parts)
