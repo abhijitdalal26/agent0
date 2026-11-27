@@ -42,7 +42,8 @@ docker compose -f infra/docker-compose.yml up -d
 uv run agent0 db-init
 uv run agent0 models                      # profiles should say "ready" once keys are set
 uv run agent0 run "Write primes.py that prints the first 20 primes, with a test"
-uv run agent0 run --task-file examples/northwind/ad-task.json   # the demo
+uv run agent0 run --task-file examples/northwind/ad-task.json   # the demo (needs image quota)
+uv run agent0 demo                        # one-command: schema + ingest + examples/brief task
 uv run agent0 serve                       # API :8000 (+ Telegram if token set)
 cd dashboard && pnpm dev                  # :3000, log in with DASHBOARD_PASSWORD
 AGENT0_MOCK=1 DASHBOARD_PASSWORD=dev pnpm dev   # UI only, fake data
@@ -60,7 +61,7 @@ AGENT0_MOCK=1 DASHBOARD_PASSWORD=dev pnpm dev   # UI only, fake data
 
 ## Known gaps / debt
 
-- Agent edit endpoints return 501. There is no sandbox file browser and no browser check type.
+- Agent edit endpoints are live (DB overlay + `model_profile` pin). There is no sandbox file browser. Browser checks exist (`type: "browser"`, url or workspace `path` via file://).
 - Temporal durability is per attempt, not per model/tool call. `docs/reference-notes.md` lists the options.
 - Temporal connect has no TLS, so Temporal Cloud isn't supported.
 - Integration tests write to the main DB. They should use a separate test DB.
