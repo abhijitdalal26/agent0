@@ -55,3 +55,8 @@ Windows mojibake in the task prompt.
   workflow, hit the expected Groq 429, and Temporal's retry policy kept it
   `executing`. Durable path works end-to-end.
 - Integration-test DB isolation confirmed already correct (env-gated).
+
+- `docker build -t agent0:latest .` succeeds; image runs `agent0 --help`
+  clean (non-root user, uv-managed venv, healthcheck on /healthz).
+- `DEMO.md` added: 3-minute pitch script (verify-trail hook, live task,
+  honest-failure beat, receipts, numbers to quote).
