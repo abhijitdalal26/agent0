@@ -44,6 +44,19 @@ empty `hero.png` when the image API was quota-limited. The artifact check
 rejected it — **"not a readable image"** — and the run failed honestly
 instead of claiming success. Verification is not a vibe; it's checks.
 
+## 3b. Bonus beat — the agent queries a real database
+
+If `AGENT0_SALES_DSN` is set and `examples/analytics/seed.sql` was applied:
+
+```bash
+uv run agent0 demo analytics
+```
+
+The agent discovers the schema, runs guarded read-only `SELECT`s, and must
+cite every number as `[src:sql:sales:…]`. The grounded check re-verifies each
+figure against the actual query result — invented totals fail. (The SQL guard
+rejects anything but a single SELECT; the connection is forced read-only.)
+
 ## 4. The receipts
 
 - `GET /runs/{id}/verify` → `{"ok": true, ...}` — recomputes the hash chain.
