@@ -6,7 +6,7 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
-from agent0.orchestrator.tools import fit_image, knowledge_toolset, query_sql
+from agent0.orchestrator.tools import fit_image, knowledge_toolset, query_sql, search_knowledge
 
 
 def _png(w: int, h: int, fmt: str = "PNG") -> bytes:
@@ -34,6 +34,18 @@ async def test_tool_errors_are_returned_not_raised():
     ctx = SimpleNamespace(deps=SimpleNamespace(knowledge={"northwind": docs}))
     assert await query_sql(ctx, "northwind", "select 1") == "error: northwind is not a SQL source"  # type: ignore[arg-type]
     assert (await query_sql(ctx, "nope", "select 1")).startswith("error: unknown source")  # type: ignore[arg-type]
+
+
+async def test_keyerror_is_returned_not_raised():
+    class Boom:
+        kind = "docs"
+
+        async def search(self, query, limit=5):
+            raise KeyError("quality")
+
+    ctx = SimpleNamespace(deps=SimpleNamespace(knowledge={"sales": Boom()}))
+    out = await search_knowledge(ctx, "sales", "q")  # type: ignore[arg-type]
+    assert out == "error: 'quality'"
 
 
 async def test_sql_errors_reach_the_model_as_text():

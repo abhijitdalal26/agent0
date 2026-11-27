@@ -15,7 +15,9 @@ from agent0.verify.judge import JudgeModelFactory, JudgeRequest, run_judged, unt
 CITATION = re.compile(r"\[src:\s*([^\]]+)\]", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n+")
 _LEADING_CITATIONS = re.compile(r"^(?:\[src:[^\]]+\][\s.,;:]*)+", re.IGNORECASE)
-_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+_NUMBER = re.compile(r"(?<![A-Za-z0-9_])\d[\d,]*(?:\.\d+)?(?![A-Za-z0-9_])")
+_LIST_MARKER = re.compile(r"^\d{1,2}[.)]\s+")
+DEFAULT_IGNORED_NUMBER_PATTERNS = [r"\b(?:19|20)\d{2}\b"]
 
 DEFAULT_ABSTENTION_PATTERNS = [
     r"\bnot (?:in|available in|present in|found in|contained in) the (?:data|sources?|provided)",
@@ -77,6 +79,7 @@ class GroundedJudgement(BaseModel):
 class GroundedCheck:
     """Config: allow_abstention (true), check_numbers (true), allowed_sources (source names in scope),
     abstention_patterns (regexes), non_claim_patterns (regexes for boilerplate like disclaimers),
+    ignored_number_patterns (regexes for numbers that aren't data claims, default: years),
     max_source_chars (2000)."""
 
     type = CheckType.GROUNDED
@@ -135,9 +138,13 @@ class GroundedCheck:
             if out_of_scope:
                 problems.append(f"cited sources outside the allowed scope: {', '.join(out_of_scope)}")
         if cfg.get("check_numbers", True):
+            ignored = cfg.get("ignored_number_patterns", DEFAULT_IGNORED_NUMBER_PATTERNS)
             for n, claim in enumerate(claims, 1):
                 cited_text = " ".join(by_id[i].content for i in claim.source_ids if i in by_id)
-                if missing := sorted(_numbers(claim.text) - _numbers(cited_text)):
+                claim_text = _LIST_MARKER.sub("", claim.text, count=1)
+                for pattern in ignored:
+                    claim_text = re.sub(pattern, " ", claim_text)
+                if missing := sorted(_numbers(claim_text) - _numbers(cited_text)):
                     problems.append(
                         f"claim {n} numbers {', '.join(missing)} not found in its cited sources: "
                         f'"{head(claim.text, 160)}"'

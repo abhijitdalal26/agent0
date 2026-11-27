@@ -37,7 +37,7 @@ def _tool_errors_to_text[**P](fn: Callable[P, Awaitable[str]]) -> Callable[P, Aw
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> str:
         try:
             return await fn(*args, **kwargs)
-        except (OSError, ValueError, RuntimeError, httpx.HTTPError, psycopg.Error) as e:
+        except (OSError, ValueError, RuntimeError, KeyError, httpx.HTTPError, psycopg.Error) as e:
             return f"error: {e}"
 
     return wrapper

@@ -99,6 +99,12 @@ def test_router_exclusion_capability_and_explain(keys, monkeypatch):
         r.pick(Capability.CHAT)
 
 
+def test_router_rejects_unknown_preference(keys):
+    r = Router(ModelRegistry([prof("a")]))
+    with pytest.raises(ValueError, match="unknown preference"):
+        r.pick(Capability.CHAT, "quality")  # type: ignore[arg-type]
+
+
 def test_router_deterministic_tiebreak(keys):
     r = Router(ModelRegistry([prof("b"), prof("a")]))
     assert r.pick(Capability.CHAT).name == "a"

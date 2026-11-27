@@ -57,6 +57,33 @@ async def test_number_not_in_cited_source_fails(ctx_factory, no_judge):
     assert not hasattr(skip, "status")
 
 
+async def test_context_numbers_are_not_data_claims(ctx_factory, no_judge):
+    answer = (
+        "In Q3 2025 the total was $42.50 [src:sql:cac:1].\n"
+        "1. Search $61.00 [src:sql:cac:2]\n"
+        "2. Social $42.50 [src:sql:cac:1]"
+    )
+    request = await GroundedCheck(no_judge).prepare(crit(), ctx_factory(answer, sources=SOURCES))
+    assert not hasattr(request, "status")
+
+
+async def test_years_ignored_unless_overridden(ctx_factory, no_judge):
+    answer = "The 1999 figure was $42.50 [src:sql:cac:1]."
+    request = await GroundedCheck(no_judge).prepare(crit(), ctx_factory(answer, sources=SOURCES))
+    assert not hasattr(request, "status")
+    v = await GroundedCheck(no_judge).prepare(
+        crit(ignored_number_patterns=[]), ctx_factory(answer, sources=SOURCES)
+    )
+    assert v.status == VerdictStatus.FAIL
+    assert "1999" in v.evidence
+
+
+async def test_letter_glued_digits_are_not_numbers(ctx_factory, no_judge):
+    answer = "Model gpt-oss-20b cost $42.50 [src:sql:cac:1]."
+    request = await GroundedCheck(no_judge).prepare(crit(), ctx_factory(answer, sources=SOURCES))
+    assert not hasattr(request, "status")
+
+
 async def test_out_of_scope_source_fails(ctx_factory, no_judge):
     v = await GroundedCheck(no_judge).run(
         crit(allowed_sources=["warehouse"]), ctx_factory(GOOD_ANSWER, sources=SOURCES)
@@ -83,9 +110,7 @@ async def test_non_claim_patterns_skip_boilerplate(ctx_factory, judge):
     answer = GOOD_ANSWER + " See terms. [src:doc:wiki:7]"
     spy = judge(labels((1, "supported", ""), (2, "supported", ""), (3, "supported", "")))
     ctx = ctx_factory(answer, sources=SOURCES, executor_provider="groq")
-    v = await GroundedCheck(spy.factory).run(
-        crit(non_claim_patterns=["see terms"]), ctx
-    )
+    v = await GroundedCheck(spy.factory).run(crit(non_claim_patterns=["see terms"]), ctx)
     assert v.status == VerdictStatus.PASS
     assert "See terms" not in spy.prompts[0]
 

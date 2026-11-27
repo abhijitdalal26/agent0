@@ -50,6 +50,8 @@ class Router:
         needs_context: int | None = None,
     ) -> list[Ranked]:
         cap = Capability(capability)
+        if prefer not in _WEIGHTS:
+            raise ValueError(f"unknown preference {prefer!r}; use one of: {', '.join(_WEIGHTS)}")
         cands = [
             p
             for p in self.registry.available(cap)
