@@ -65,8 +65,7 @@ AGENT0_MOCK=1 DASHBOARD_PASSWORD=dev pnpm dev   # UI only, fake data
 - Temporal durability is per attempt, not per model/tool call. `docs/reference-notes.md` lists the options.
 - Temporal connect has no TLS, so Temporal Cloud isn't supported.
 - Integration tests are isolated: `tests/db/test_pg_integration.py` requires `AGENT0_DATABASE_URL` (skips otherwise); temporal/docker tests touch no DB.
-- `agents/executor/agent.md` sets `budget.max_steps: 40`, which overrides the task's `max_steps`. Confirm that's intended.
-- Windows prints a cosmetic unclosed-pipe warning in `tests/tools/test_tools.py::test_shell_and_events`.
+- `agents/executor/agent.md` `budget.max_steps: 40` is a per-field ceiling via `effective_budget` (stricter of task/agent wins) — intended; it can only tighten, never loosen, the task budget.
 
 ## Conventions (from the user)
 
