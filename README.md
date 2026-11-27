@@ -99,6 +99,24 @@ The run writes 3 ad variants and a hero image using only the facts in `examples/
 
 Finally it waits for your approval. Failed checks go back to the agent as feedback for a retry.
 
+## Demo: SQL-grounded analytics
+
+```bash
+psql "$AGENT0_DATABASE_URL" -f examples/analytics/seed.sql   # once: 288-order demo dataset
+# set AGENT0_SALES_DSN=postgresql://agent0:agent0@127.0.0.1:5434/agent0 in .env
+uv run agent0 demo analytics
+```
+
+The agent discovers the schema, runs read-only `SELECT`s through the guarded
+`query_sql` tool, and must cite every figure as `[src:sql:sales:…]`. The
+`grounded` check then verifies each number against the actual query result —
+a report with an invented total fails. Knowledge sources may be marked
+`optional: true` so a missing DSN skips them instead of blocking startup.
+
+Rate-limited providers are demoted automatically: a profile that returns 429
+enters a cooldown (exponential backoff, honors `retry_after`) and the router
+ranks it last until it expires, so retries stop hammering dead quota.
+
 ## Development
 
 ```bash

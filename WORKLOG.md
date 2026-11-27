@@ -60,3 +60,23 @@ Windows mojibake in the task prompt.
   clean (non-root user, uv-managed venv, healthcheck on /healthz).
 - `DEMO.md` added: 3-minute pitch script (verify-trail hook, live task,
   honest-failure beat, receipts, numbers to quote).
+
+## Phase 4 (cont.) — cooldowns + third demo + SQL tool fix
+
+- **Rate-limit cooldowns** (`models/cooldown.py`): every 429 now puts the
+  profile into an exponential-backoff cooldown (60s → 30min cap, honors the
+  provider's `retry_after`); `Router.rank` sinks cooling profiles so retries
+  stop re-picking dead quota. Chat calls via a `WrapperModel`, media calls
+  (image/TTS/STT/embed) via `_run`. `/router/preview` shows "cooled down: …".
+- **Third demo — SQL grounding** (`examples/analytics/`): deterministic
+  288-order sales dataset in `analytics.*`, `optional: true` sql source
+  (`AGENT0_SALES_DSN`), Q3 report task whose grounded check verifies every
+  number against cited `sql:sales:` records. Verified live: agent queried
+  the DB and produced real source_ids.
+- **Bug found live**: `query_sql` DB errors (e.g. UndefinedTable) killed the
+  attempt instead of reaching the model as feedback — `psycopg.Error` added
+  to `_tool_errors_to_text`, plus a test. `query_sql` docstring now says
+  Postgres/information_schema.
+- API restarted twice to load cooldown + sales source; zombie Temporal test
+  run stopped.
+- Retry loops running: `/tmp/northwind-retry.log`, `/tmp/analytics-retry.log`.
