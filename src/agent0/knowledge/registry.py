@@ -37,6 +37,8 @@ def load_sources(
         if kind == "sql":
             dsn = env.get(entry.get("dsn_env", ""))
             if not dsn:
+                if entry.get("optional"):
+                    continue
                 raise KnowledgeConfigError(f"source {name!r}: env var {entry.get('dsn_env')!r} is not set")
             sources[name] = SqlKnowledgeSource(
                 name,

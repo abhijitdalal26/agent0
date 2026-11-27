@@ -36,6 +36,20 @@ async def test_tool_errors_are_returned_not_raised():
     assert (await query_sql(ctx, "nope", "select 1")).startswith("error: unknown source")  # type: ignore[arg-type]
 
 
+async def test_sql_errors_reach_the_model_as_text():
+    import psycopg
+
+    from agent0.knowledge.sql import SqlKnowledgeSource
+
+    async def boom(sql, params):
+        raise psycopg.errors.UndefinedTable('relation "sqlite_master" does not exist')
+
+    src = SqlKnowledgeSource("sales", executor=boom)
+    ctx = SimpleNamespace(deps=SimpleNamespace(knowledge={"sales": src}))
+    out = await query_sql(ctx, "sales", "select name from sqlite_master")  # type: ignore[arg-type]
+    assert out.startswith("error:") and "sqlite_master" in out
+
+
 async def test_wrapped_tools_keep_their_schema():
     seen: dict[str, object] = {}
 

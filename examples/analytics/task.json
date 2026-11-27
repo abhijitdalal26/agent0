@@ -1,0 +1,59 @@
+{
+ "title": "Q3 sales report from the database",
+ "prompt": "Using ONLY the 'sales' SQL knowledge source (call list_sources, then query_sql with SELECT statements), analyze orders from Q3 2025 (July through September). Write report.md with sections '## Revenue by Region', '## Top Products', '## Total Revenue'. Every number in the report must come from a query result and be cited as [src:<id>] using the source_id returned by query_sql; do not state any figure you did not query. Keep it under 300 words. Do not attempt INSERT/UPDATE/DELETE --- the source is read-only.",
+ "agent": "executor",
+ "criteria": [
+  {
+   "id": "structure",
+   "type": "artifact",
+   "description": "report.md has all required sections",
+   "config": {
+    "path": "report.md",
+    "required_patterns": [
+     "## Revenue by Region",
+     "## Top Products",
+     "## Total Revenue"
+    ]
+   }
+  },
+  {
+   "id": "citations",
+   "type": "artifact",
+   "description": "factual claims carry sql source citations",
+   "config": {
+    "path": "report.md",
+    "required_patterns": [
+     "\\[src:sql:sales:"
+    ]
+   }
+  },
+  {
+   "id": "facts",
+   "type": "grounded",
+   "description": "every number is backed by a cited query result",
+   "config": {
+    "path": "report.md"
+   }
+  },
+  {
+   "id": "quality",
+   "type": "llm_judge",
+   "description": "report is accurate, concise and well-structured",
+   "config": {
+    "path": "report.md",
+    "rubric": [
+     "Numbers match the cited query results",
+     "Covers all three required sections",
+     "Concise, no filler",
+     "Clearly separates Q3 2025 data"
+    ],
+    "threshold": 4
+   }
+  },
+  {
+   "id": "signoff",
+   "type": "human",
+   "description": "a human approves before sharing"
+  }
+ ]
+}

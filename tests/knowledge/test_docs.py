@@ -1,5 +1,7 @@
+import pytest
+
 from agent0.knowledge.docs import InMemoryDocsSource, chunk_text
-from agent0.knowledge.registry import load_sources
+from agent0.knowledge.registry import KnowledgeConfigError, load_sources
 
 
 def _write(root, files):
@@ -56,6 +58,20 @@ def test_registry_loads_docs_and_sql(tmp_path):
     sources = load_sources(tmp_path / "config" / "knowledge.yaml", env={"WH_URL": "postgresql://ro@h/db"})
     assert sources["handbook"].kind == "docs" and sources["wh"].kind == "sql"
     assert load_sources(tmp_path / "missing.yaml") == {}
+
+
+def test_registry_skips_optional_sql_without_dsn(tmp_path):
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "knowledge.yaml").write_text(
+        "sources:\n"
+        "  - {name: wh, kind: sql, dsn_env: WH_URL, optional: true}\n"
+        "  - {name: wh2, kind: sql, dsn_env: WH2_URL}\n",
+        encoding="utf-8",
+    )
+    sources = load_sources(tmp_path / "config" / "knowledge.yaml", env={"WH2_URL": "postgresql://ro@h/db"})
+    assert "wh" not in sources and sources["wh2"].kind == "sql"
+    with pytest.raises(KnowledgeConfigError):
+        load_sources(tmp_path / "config" / "knowledge.yaml", env={})
 
 
 async def test_search_indexes_lazily_on_first_use(tmp_path):

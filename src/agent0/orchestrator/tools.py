@@ -8,6 +8,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 import httpx
+import psycopg
 from PIL import Image, UnidentifiedImageError
 from pydantic_ai import RunContext
 from pydantic_ai.toolsets import FunctionToolset
@@ -36,7 +37,7 @@ def _tool_errors_to_text[**P](fn: Callable[P, Awaitable[str]]) -> Callable[P, Aw
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> str:
         try:
             return await fn(*args, **kwargs)
-        except (OSError, ValueError, RuntimeError, httpx.HTTPError) as e:
+        except (OSError, ValueError, RuntimeError, httpx.HTTPError, psycopg.Error) as e:
             return f"error: {e}"
 
     return wrapper
@@ -101,7 +102,8 @@ async def search_knowledge(ctx: RunContext[RunDeps], source: str, query: str, li
 
 @_tool_errors_to_text
 async def query_sql(ctx: RunContext[RunDeps], source: str, sql: str) -> str:
-    """Run one read-only SELECT on a SQL source. Cite rows you use as [src:<id>]."""
+    """Run one read-only SELECT on a SQL source (Postgres; discover schema via
+    information_schema, not sqlite_master). Cite rows you use as [src:<id>]."""
     src = _source(ctx.deps, source)
     if src.kind != "sql":
         raise ValueError(f"{source} is not a SQL source")

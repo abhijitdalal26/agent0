@@ -3,4 +3,6 @@
 sources:
   - {name: northwind, kind: docs, path: examples/northwind/docs, patterns: ["**/*.md"]}
   - {name: harness-notes, kind: docs, path: examples/brief/docs, patterns: ["**/*.md"]}
-#  - {name: warehouse, kind: sql, dsn_env: WAREHOUSE_RO_URL, timeout_ms: 5000, max_rows: 50}
+  # optional: skipped when AGENT0_SALES_DSN is unset, so setups without the
+  # demo dataset still boot. Seed it with examples/analytics/seed.sql.
+  - {name: sales, kind: sql, dsn_env: AGENT0_SALES_DSN, optional: true, timeout_ms: 5000, max_rows: 50}
