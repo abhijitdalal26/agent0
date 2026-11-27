@@ -122,12 +122,15 @@ class BrowserCheck:
         cfg = criterion.config
         url = cfg.get("url")
         if not url and (path := cfg.get("path")):
-            root = getattr(ctx.sandbox, "workspace", None)
+            # Artifacts always live on the host workspace dir, even when commands
+            # ran inside Docker — both sandbox types expose it as files.root.
+            files = getattr(ctx.sandbox, "files", None)
+            root = getattr(files, "root", None) or getattr(ctx.sandbox, "workspace", None)
             if root is None:
                 return verdict(
                     criterion,
                     VerdictStatus.ERROR,
-                    "browser check with a path needs a local sandbox workspace",
+                    "browser check with a path needs a sandbox exposing a host workspace",
                 )
             url = (Path(root) / str(path)).resolve().as_uri()
         if not url:

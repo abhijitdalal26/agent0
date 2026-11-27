@@ -87,11 +87,12 @@ async def test_requires_url(ctx_factory):
 
 
 async def test_workspace_path_becomes_file_uri(ctx_factory, tmp_path):
-    from agent0.sandbox.base import ExecResult  # noqa: F401 - keep import local
+    from types import SimpleNamespace
+
     from tests.verify.conftest import FakeSandbox
 
     sb = FakeSandbox()
-    sb.workspace = tmp_path
+    sb.files = SimpleNamespace(root=tmp_path)
     page = FakePage()
     v = await check_with(page).run(
         crit(path="report.html", expect_text="Welcome"), ctx_factory(sandbox=sb)
