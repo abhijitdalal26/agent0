@@ -41,7 +41,7 @@ async def _run(deps: ToolDeps, tool: str, args: dict[str, Any], body: Callable[[
             ok, out = False, f"error: {e.strerror or e}"
         except httpx.HTTPError as e:
             ok, out = False, f"error: request failed: {e}"
-        except ValueError as e:
+        except (ValueError, KeyError) as e:
             ok, out = False, f"error: {e}"
     await deps.events.emit(
         deps.run_id,

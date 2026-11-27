@@ -105,15 +105,21 @@ def skill_toolset(
 
     async def load_skill(name: str) -> str:
         """Load the full instructions of a skill listed in the skill index."""
-        check(name)
-        body = library.body(name)
+        try:
+            check(name)
+            body = library.body(name)
+        except (SkillError, OSError) as exc:
+            return f"error: {exc}"
         if sink is not None:
             await sink.emit(run_id, EventType.SKILL_LOADED, {"name": name, "chars": len(body)})
         return body
 
     async def read_skill_file(name: str, path: str) -> str:
         """Read a file bundled with a skill, by path relative to the skill folder."""
-        check(name)
-        return library.read_file(name, path)
+        try:
+            check(name)
+            return library.read_file(name, path)
+        except (SkillError, OSError) as exc:
+            return f"error: {exc}"
 
     return FunctionToolset([load_skill, read_skill_file], id="skills")

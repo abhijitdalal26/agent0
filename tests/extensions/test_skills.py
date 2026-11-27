@@ -51,17 +51,20 @@ async def test_read_skill_file_confined(lib: SkillLibrary):
     ts = skill_toolset(lib)
     read = ts.tools["read_skill_file"].function
     assert await read(name="demo", path="refs/a.txt") == "ref-a"
-    for bad in ("../../secret.txt", "../bad/SKILL.md", "/etc/passwd"):
-        with pytest.raises(SkillError):
-            await read(name="demo", path=bad)
-    with pytest.raises(SkillError):
-        await read(name="demo", path="missing.txt")
+    for bad in ("../../secret.txt", "../bad/SKILL.md", "/etc/passwd", "missing.txt"):
+        assert (await read(name="demo", path=bad)).startswith("error:")
+
+
+async def test_unknown_skill_is_feedback_not_a_crash(lib: SkillLibrary):
+    ts = skill_toolset(lib)
+    out = await ts.tools["load_skill"].function(name="northwind")
+    assert out.startswith("error: unknown skill 'northwind'")
+    assert "demo" in out
 
 
 async def test_allowed_filter_and_unknown(lib: SkillLibrary):
     ts = skill_toolset(lib, allowed=[])
-    with pytest.raises(SkillError):
-        await ts.tools["load_skill"].function(name="demo")
+    assert (await ts.tools["load_skill"].function(name="demo")).startswith("error:")
     with pytest.raises(SkillError):
         lib.get("nope")
 
