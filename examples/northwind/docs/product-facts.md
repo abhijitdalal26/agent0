@@ -12,6 +12,7 @@
 - An oral (non-injection) option is available for eligible patients.
 - Eligibility is decided by the clinician after the assessment.
 - Monthly price for the oral option: $199.
+- Campaign launch date: the coming Monday.
 
 ## Patient survey (Q3, synthetic)
 - 4.7 out of 5 average satisfaction from 1,240 surveyed patients.
