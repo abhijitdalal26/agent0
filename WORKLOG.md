@@ -26,3 +26,20 @@ Running log of what I'm doing, so it's readable in the morning.
   passes with real Chromium. `facts` (grounded) is the remaining gate —
   executor keeps adding recommendation claims the sources don't state;
   tightened the task prompt to mark advice as opinion.
+
+## Phase 1 COMPLETE — first fully-green flagship run
+
+Run `1ebe12f68b924d90a93cdf8a4ce0088c` (task `529cd81a…`, "Agent harness
+landscape brief") **succeeded** at $0.0035:
+
+- structure / length / self-contained-HTML artifact checks: pass
+- `renders`: real headless Chromium opened `report.html` via file:// — pass
+- `facts` (grounded): 16 claims verified against harness-notes sources — pass
+- `quality` (llm_judge): 4/5 — pass
+- `signoff` (human): run paused at `waiting_approval`, approved via
+  `POST /approvals/{id}` → succeeded
+- `/verify` → `ok: true` (23 chained events), `/receipt` signed bundle OK
+
+Also fixed en route: tool OSErrors (bogus paths like citation-ids) now
+return error text instead of killing the attempt (`714a4b3`), and a
+Windows mojibake in the task prompt.
