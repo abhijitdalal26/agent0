@@ -103,14 +103,31 @@ pipeline is proven.
 - `knowledge_chunks` was empty — the `northwind` docs source must be ingested
   once (`uv run agent0 ingest northwind`) or skill doc-refs fail. Now ingested;
   README demo section updated.
-- Agent `model_profile` pins currently set for the demo: planner=groq-smart,
-  marketer=gemini-lite (DB overlay; edit via dashboard or `PUT /agents/{name}`).
+- Agent `model_profile` pins (DB overlay; edit via dashboard or `PUT /agents/{name}`):
+  planner=gemini-flash, marketer=groq-fast — chosen so the LLM judge
+  (which excludes the executor's provider) lands on Google while the
+  executor lands on Groq. Groq gpt-oss-20b TPD (200k/day) was exhausted
+  overnight; a background retry loop re-attempts Northwind every ~45min.
 - Unverified tonight: Telegram bot, Temporal worker path, cloud compose,
   `docker build` of the sandbox image.
 - Old runs written before the hash-chain feature needed the backfill — done for
   the dev DB; other deployments should run `agent0 db-backfill-hashes` once.
 
 ## Test status
+
+## Phase 2 update — second flagship demo is fully green
+
+`examples/brief` ("Agent harness landscape brief") **succeeded** end-to-end:
+6/7 automated checks (artifact patterns, word count, self-contained HTML,
+real headless-Chromium render via `file://`, grounded facts vs the new
+`harness-notes` knowledge source, llm_judge quality 4/5) + human signoff
+approved through `POST /approvals/{id}`. Cost $0.0035, audit chain verified.
+This is the quota-independent demo — `uv run agent0 demo` reproduces it.
+
+Northwind remains quota-blocked only: hero.png now generates (image quota
+partially back), judge works (voice 5/5), the last blocker was Groq TPD.
+Also fixed: task prompt mandated "launching Monday" but the facts doc
+lacked it — added the launch-date fact and re-ingested.
 
 - `uv run pytest`: **337 passed** (+4 integration against real Postgres)
 - `ruff check` / `ruff format` / `pyright`: clean
