@@ -132,3 +132,25 @@ lacked it — added the launch-date fact and re-ingested.
 - `uv run pytest`: **337 passed** (+4 integration against real Postgres)
 - `ruff check` / `ruff format` / `pyright`: clean
 - Dashboard `tsc --noEmit` + `pnpm build`: clean (16 routes)
+
+## Session 2 additions (afternoon)
+
+- **Rate-limit cooldowns**: profiles that 429 enter exponential backoff
+  (60s→30min, honors `retry_after`); the router ranks them last until
+  expiry. Applies to chat (wrapper model) and media (image/TTS/STT/embed).
+  `/router/preview` and the dashboard Models page show "cooled down: …".
+- **Third demo — SQL grounding** (`examples/analytics/`): deterministic
+  288-order dataset, `optional: true` sql knowledge source, Q3 report task.
+  Verified live: agent discovered schema via information_schema and cited
+  real `sql:sales:` records. `AGENT0_SALES_DSN` in `.env` enables it.
+- **Live-found bug**: DB errors from `query_sql` killed attempts instead of
+  reaching the model — `psycopg.Error` now returns as tool feedback (+test).
+- **Temporal verified**: dev server + worker ran a real workflow
+  (`temporal_workflow_id` set, retry policy held through a 429).
+- **Docker**: `docker build -t agent0:latest` succeeds, non-root, healthcheck.
+- **Docs**: `DEMO.md` pitch script, `.env.example` completed, README gained
+  the analytics demo + cooldown notes, HANDOFF stale items corrected.
+- **Tests**: 348 passing, ruff + pyright clean.
+- Retry loops still running for northwind + analytics until quota resets
+  (all providers' free tiers are exhausted as of ~09:15; loops retry every
+  ~30min and will catch the reset automatically).
