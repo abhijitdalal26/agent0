@@ -116,3 +116,28 @@ def test_check_plan_rejects_unrunnable_criteria():
     bad = TaskSpec(goal="g", criteria=[Criterion(id="c1", type="command", description="tests pass")])
     with pytest.raises(ModelRetry, match="c1.*config.cmd"):
         check_plan(bad)
+
+
+def test_check_plan_coerces_string_patterns():
+    from pydantic_ai.exceptions import ModelRetry
+
+    from agent0.orchestrator.steps import check_plan
+    from agent0.verify import Criterion, TaskSpec
+
+    spec = TaskSpec(
+        goal="g",
+        criteria=[
+            Criterion(
+                id="c1",
+                type="artifact",
+                description="d",
+                config={"path": "a.md", "required_patterns": "## Summary", "forbidden_patterns": 5},
+            )
+        ],
+    )
+    with pytest.raises(ModelRetry, match="forbidden_patterns"):
+        check_plan(spec)
+
+    spec.criteria[0].config["forbidden_patterns"] = ["bad"]
+    out = check_plan(spec)
+    assert out.criteria[0].config["required_patterns"] == ["## Summary"]

@@ -37,7 +37,7 @@ async def _run(deps: ToolDeps, tool: str, args: dict[str, Any], body: Callable[[
             ok, out = False, f"refused: {e}"
         except FileNotFoundError:
             ok, out = False, f"error: not found: {args.get('path')}"
-        except (IsADirectoryError, NotADirectoryError) as e:
+        except OSError as e:
             ok, out = False, f"error: {e.strerror or e}"
         except httpx.HTTPError as e:
             ok, out = False, f"error: request failed: {e}"
