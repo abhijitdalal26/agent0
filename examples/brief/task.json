@@ -1,0 +1,20 @@
+{
+  "title": "Agent harness landscape brief",
+  "prompt": "Write a research brief comparing the main ways to build an agent harness, using ONLY facts from the harness-notes knowledge source and citing them as [src:<id>]. Cover: what a harness is vs a framework, verification patterns, audit trails, and context engineering. Save the brief as brief.md with sections '## Overview', '## Approaches', '## Trade-offs', '## Recommendation' (at least 400 words total). Also produce report.html — a clean self-contained single-file HTML version of the brief (inline CSS, no external assets) — following the report-html skill.",
+  "agent": "executor",
+  "criteria": [
+    {"id": "structure", "type": "artifact", "description": "brief.md has all required sections",
+     "config": {"path": "brief.md", "required_patterns": ["## Overview", "## Approaches", "## Trade-offs", "## Recommendation"]}},
+    {"id": "length", "type": "command", "description": "brief is substantive (400+ words)",
+     "config": {"cmd": "python -c \"t=open('brief.md',encoding='utf-8').read();assert len(t.split())>=400,'too short'\""}},
+    {"id": "html", "type": "artifact", "description": "report.html is self-contained",
+     "config": {"path": "report.html", "forbidden_patterns": ["<(script|link|img)[^>]+(src|href)=\\\"https?://", "@import", "url\\(https?://"]}},
+    {"id": "renders", "type": "browser", "description": "report.html renders in a real browser",
+     "config": {"path": "report.html", "expect_selector": "h1", "expect_text": "harness"}},
+    {"id": "facts", "type": "grounded", "description": "every claim is backed by a cited source",
+     "config": {"path": "brief.md"}},
+    {"id": "quality", "type": "llm_judge", "description": "brief is clear, accurate and well-structured",
+     "config": {"path": "brief.md", "rubric": ["Accurately reflects the source notes", "Clear comparison of approaches", "Actionable recommendation", "No filler or padding"], "threshold": 4}},
+    {"id": "signoff", "type": "human", "description": "a human approves before sharing"}
+  ]
+}

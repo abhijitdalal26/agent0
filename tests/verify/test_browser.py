@@ -84,3 +84,26 @@ async def test_missing_playwright_is_error(ctx_factory):
 async def test_requires_url(ctx_factory):
     with pytest.raises(ConfigError):
         await check_with(FakePage()).run(crit(expect_text="x"), ctx_factory())
+
+
+async def test_workspace_path_becomes_file_uri(ctx_factory, tmp_path):
+    from agent0.sandbox.base import ExecResult  # noqa: F401 - keep import local
+    from tests.verify.conftest import FakeSandbox
+
+    sb = FakeSandbox()
+    sb.workspace = tmp_path
+    page = FakePage()
+    v = await check_with(page).run(
+        crit(path="report.html", expect_text="Welcome"), ctx_factory(sandbox=sb)
+    )
+    assert v.status == VerdictStatus.PASS
+    assert page.got == (tmp_path / "report.html").resolve().as_uri()
+
+
+async def test_path_without_workspace_is_error(ctx_factory):
+    from tests.verify.conftest import FakeSandbox
+
+    v = await check_with(FakePage()).run(
+        crit(path="report.html"), ctx_factory(sandbox=FakeSandbox())
+    )
+    assert v.status == VerdictStatus.ERROR

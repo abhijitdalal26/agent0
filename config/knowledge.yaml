@@ -2,4 +2,5 @@
 # kind: docs -> path is relative to the repo root; markdown/txt files are chunked and indexed
 sources:
   - {name: northwind, kind: docs, path: examples/northwind/docs, patterns: ["**/*.md"]}
+  - {name: harness-notes, kind: docs, path: examples/brief/docs, patterns: ["**/*.md"]}
 #  - {name: warehouse, kind: sql, dsn_env: WAREHOUSE_RO_URL, timeout_ms: 5000, max_rows: 50}

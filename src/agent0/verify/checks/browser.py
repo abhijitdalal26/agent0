@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import threading
 from collections.abc import Awaitable, Callable, Coroutine
+from pathlib import Path
 from typing import Any, Protocol
 
 from agent0.verify.base import CheckType, Criterion, Verdict, VerdictStatus, VerifyContext
-from agent0.verify.checks._util import CheckStage, head, require, verdict
+from agent0.verify.checks._util import CheckStage, ConfigError, head, verdict
 
 
 class BrowserPage(Protocol):
@@ -106,7 +107,9 @@ async def _chromium_page() -> BrowserPage:
 class BrowserCheck:
     """Loads a real page in headless Chromium and checks what a user would see.
 
-    Config: `url` (required), `expect_text`, `expect_selector`, `wait_ms`, `timeout_s`.
+    Config: `url` (required unless `path`), or `path` for a workspace artifact
+    opened via file:// (local sandbox only). Optional `expect_text`,
+    `expect_selector`, `wait_ms`, `timeout_s`.
     """
 
     type = CheckType.BROWSER
@@ -116,8 +119,19 @@ class BrowserCheck:
         self._factory = page_factory or _chromium_page
 
     async def run(self, criterion: Criterion, ctx: VerifyContext) -> Verdict:
-        url = str(require(criterion, "url"))
         cfg = criterion.config
+        url = cfg.get("url")
+        if not url and (path := cfg.get("path")):
+            root = getattr(ctx.sandbox, "workspace", None)
+            if root is None:
+                return verdict(
+                    criterion,
+                    VerdictStatus.ERROR,
+                    "browser check with a path needs a local sandbox workspace",
+                )
+            url = (Path(root) / str(path)).resolve().as_uri()
+        if not url:
+            raise ConfigError("browser check needs config.url or config.path")
         timeout_ms = int(float(cfg.get("timeout_s", 20)) * 1000)
         try:
             page = await self._factory()
