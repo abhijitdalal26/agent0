@@ -64,7 +64,7 @@ AGENT0_MOCK=1 DASHBOARD_PASSWORD=dev pnpm dev   # UI only, fake data
 - Agent edit endpoints are live (DB overlay + `model_profile` pin). There is no sandbox file browser. Browser checks exist (`type: "browser"`, url or workspace `path` via file://).
 - Temporal durability is per attempt, not per model/tool call. `docs/reference-notes.md` lists the options.
 - Temporal connect has no TLS, so Temporal Cloud isn't supported.
-- Integration tests write to the main DB. They should use a separate test DB.
+- Integration tests are isolated: `tests/db/test_pg_integration.py` requires `AGENT0_DATABASE_URL` (skips otherwise); temporal/docker tests touch no DB.
 - `agents/executor/agent.md` sets `budget.max_steps: 40`, which overrides the task's `max_steps`. Confirm that's intended.
 - Windows prints a cosmetic unclosed-pipe warning in `tests/tools/test_tools.py::test_shell_and_events`.
 
