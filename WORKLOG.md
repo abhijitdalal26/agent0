@@ -43,3 +43,15 @@ landscape brief") **succeeded** at $0.0035:
 Also fixed en route: tool OSErrors (bogus paths like citation-ids) now
 return error text instead of killing the attempt (`714a4b3`), and a
 Windows mojibake in the task prompt.
+
+## Phase 4 progress
+
+- Budget semantics confirmed: agent `budget` is a per-field ceiling
+  (`effective_budget` = stricter of task/agent) — HANDOFF flag resolved.
+- Windows pipe warning already fixed earlier (`_close_pipes` in local.py).
+- **Temporal path verified live**: `temporal server start-dev` +
+  `AGENT0_ORCHESTRATOR=temporal agent0 worker` + `serve`; a task dispatched
+  got `temporal_workflow_id=agent0-run-…`, the worker executed the
+  workflow, hit the expected Groq 429, and Temporal's retry policy kept it
+  `executing`. Durable path works end-to-end.
+- Integration-test DB isolation confirmed already correct (env-gated).
